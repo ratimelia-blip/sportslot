@@ -7,6 +7,11 @@ type Service = {
   id: string
   name: string
   description: string | null
+}
+
+type ServiceOption = {
+  id: string
+  service_id: string
   duration_minutes: number
   price: number
 }
@@ -26,72 +31,101 @@ function localDate() {
 function formatTime(minutes: number) {
   const hour = Math.floor(minutes / 60)
   const minute = minutes % 60
+
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
 }
 
 function durationLabel(minutes: number) {
-  if (minutes === 15) return '15 min'
-  if (minutes === 30) return '30 min'
+  if (minutes === 15) return '15 minutes'
+  if (minutes === 30) return '30 minutes'
+  if (minutes === 45) return '45 minutes'
   if (minutes === 60) return '1 hour'
   if (minutes === 300) return '5 hours'
-  return `${minutes} min`
+
+  return `${minutes} minutes`
 }
 
 export default function PLC() {
   const sb = supabaseBrowser()
 
   const [services, setServices] = useState<Service[]>([])
+  const [options, setOptions] = useState<ServiceOption[]>([])
+
   const [service, setService] = useState<Service | null>(null)
+  const [option, setOption] = useState<ServiceOption | null>(null)
+
   const [date, setDate] = useState(localDate())
   const [time, setTime] = useState('')
+
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
+
   const [done, setDone] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
-      const { data: club } = await sb
+      const { data: club, error: clubError } = await sb
         .from('clubs')
         .select('id')
         .eq('slug', 'poti-lake-club')
         .single()
 
-      if (!club) {
+      if (clubError || !club) {
         setError('Club not found.')
         setLoading(false)
         return
       }
 
-      const { data, error } = await sb
+      const { data: serviceData, error: serviceError } = await sb
         .from('services')
-        .select(
-          'id,name,description,duration_minutes,price'
-        )
+        .select('id,name,description')
         .eq('club_id', club.id)
         .eq('active', true)
         .order('name')
 
-      if (error) {
-        setError(error.message)
-      } else {
-        setServices(data || [])
+      if (serviceError) {
+        setError(serviceError.message)
+        setLoading(false)
+        return
       }
 
+      const { data: optionData, error: optionError } = await sb
+        .from('service_options')
+        .select('id,service_id,duration_minutes,price')
+        .eq('active', true)
+        .order('duration_minutes')
+
+      if (optionError) {
+        setError(optionError.message)
+        setLoading(false)
+        return
+      }
+
+      setServices(serviceData || [])
+      setOptions(optionData || [])
       setLoading(false)
     }
 
     load()
   }, [])
 
-  const slots = useMemo(() => {
+  const serviceOptions = useMemo(() => {
     if (!service) return []
+
+    return options.filter(
+      (item) => item.service_id === service.id
+    )
+  }, [service, options])
+
+  const slots = useMemo(() => {
+    if (!option) return []
 
     const opening = OPEN_HOUR * 60
     const closing = CLOSE_HOUR * 60
-    const duration = service.duration_minutes
+    const duration = option.duration_minutes
 
     const result: string[] = []
 
@@ -104,14 +138,21 @@ export default function PLC() {
     }
 
     return result
-  }, [service])
+  }, [option])
+
+  const selectService = (selected: Service) => {
+    setService(selected)
+    setOption(null)
+    setTime('')
+    setError('')
+  }
 
   const submit = async () => {
     setError('')
 
-    if (!service || !time || !name.trim()) {
+    if (!service || !option || !time || !name.trim()) {
       setError(
-        'Please select a service, time and enter your name.'
+        'Please select a service, duration, time and enter your name.'
       )
       return
     }
@@ -119,7 +160,7 @@ export default function PLC() {
     const starts = `${date}T${time}:00+04:00`
 
     const { data, error } = await sb.rpc('create_booking', {
-      p_service_id: service.id,
+      p_service_option_id: option.id,
       p_customer_name: name.trim(),
       p_customer_phone: phone.trim(),
       p_customer_email: email.trim(),
@@ -134,6 +175,7 @@ export default function PLC() {
       } else {
         setError(error.message)
       }
+
       return
     }
 
@@ -151,18 +193,22 @@ export default function PLC() {
           Sport<span>Slot</span>
         </div>
 
-        <div className="muted">Poti Lake Club</div>
+        <div className="muted">
+          Poti Lake Club
+        </div>
       </nav>
 
       <section className="booking">
-        <div className="eyebrow">Poti · Georgia</div>
+        <div className="eyebrow">
+          Poti · Georgia
+        </div>
 
         <h1 style={{ fontSize: 42, marginBottom: 5 }}>
           Poti Lake Club
         </h1>
 
         <p className="muted">
-          Choose your activity, date and time.
+          Choose your activity, duration, date and time.
         </p>
 
         {done ? (
@@ -173,7 +219,9 @@ export default function PLC() {
               Your reservation has been created successfully.
             </p>
 
-            <strong>Booking ID: {done}</strong>
+            <strong>
+              Booking ID: {done}
+            </strong>
           </div>
         ) : (
           <>
@@ -184,24 +232,61 @@ export default function PLC() {
                 <div
                   key={s.id}
                   className={`service ${
-                    service?.id === s.id ? 'selected' : ''
+                    service?.id === s.id
+                      ? 'selected'
+                      : ''
                   }`}
-                  onClick={() => {
-                    setService(s)
-                    setTime('')
-                  }}
+                  onClick={() => selectService(s)}
                 >
                   <strong>{s.name}</strong>
 
                   <div className="muted">
-                    {durationLabel(s.duration_minutes)} ·{' '}
-                    {s.price} GEL
+                    Select duration
                   </div>
                 </div>
               ))}
             </div>
 
-            <h3>2. Choose date</h3>
+            {service && (
+              <>
+                <h3>
+                  2. Choose duration
+                </h3>
+
+                <select
+                  className="input"
+                  value={option?.id || ''}
+                  onChange={(e) => {
+                    const selected =
+                      serviceOptions.find(
+                        (item) =>
+                          item.id === e.target.value
+                      ) || null
+
+                    setOption(selected)
+                    setTime('')
+                  }}
+                >
+                  <option value="">
+                    Select duration
+                  </option>
+
+                  {serviceOptions.map((item) => (
+                    <option
+                      key={item.id}
+                      value={item.id}
+                    >
+                      {durationLabel(
+                        item.duration_minutes
+                      )}{' '}
+                      — {item.price} GEL
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+
+            <h3>3. Choose date</h3>
 
             <input
               className="input"
@@ -214,11 +299,11 @@ export default function PLC() {
               }}
             />
 
-            <h3>3. Choose time</h3>
+            <h3>4. Choose time</h3>
 
-            {!service ? (
+            {!option ? (
               <p className="muted">
-                Select a service first.
+                Select a duration first.
               </p>
             ) : (
               <div className="times">
@@ -230,8 +315,10 @@ export default function PLC() {
                     style={
                       time === t
                         ? {
-                            borderColor: 'var(--accent)',
-                            background: '#0d2d35',
+                            borderColor:
+                              'var(--accent)',
+                            background:
+                              '#0d2d35',
                           }
                         : {}
                     }
@@ -242,29 +329,45 @@ export default function PLC() {
               </div>
             )}
 
-            <h3>4. Your details</h3>
+            <h3>5. Your details</h3>
 
             <div className="form">
               <input
                 className="input"
                 placeholder="Full name *"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) =>
+                  setName(e.target.value)
+                }
               />
 
               <input
                 className="input"
                 placeholder="Phone"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) =>
+                  setPhone(e.target.value)
+                }
               />
 
               <input
                 className="input"
                 placeholder="Email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) =>
+                  setEmail(e.target.value)
+                }
               />
+
+              {option && (
+                <div className="muted">
+                  {service?.name} ·{' '}
+                  {durationLabel(
+                    option.duration_minutes
+                  )}{' '}
+                  · {option.price} GEL
+                </div>
+              )}
 
               {error && (
                 <div className="error">
