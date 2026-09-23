@@ -1,9 +1,9 @@
 'use client'
 
 import { Suspense, useState } from 'react'
-import { supabaseBrowser } from '../../lib/supabase'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { supabaseBrowser } from '../../lib/supabase'
 
 const sports = [
   'Watersports',
@@ -24,21 +24,28 @@ function SignupForm() {
   const sb = supabaseBrowser()
   const searchParams = useSearchParams()
 
-  const selectedSport = searchParams.get('sport') || ''
-  const selectedPlan = searchParams.get('plan') || ''
-  const billing = searchParams.get('billing') === 'yearly'
-    ? 'yearly'
-    : 'monthly'
+  const selectedSport =
+    searchParams.get('sport') || ''
+
+  const selectedPlan =
+    searchParams.get('plan') || ''
+
+  const billing =
+    searchParams.get('billing') === 'yearly'
+      ? 'yearly'
+      : 'monthly'
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [club, setClub] = useState('')
-  const [sport, setSport] = useState(selectedSport)
+  const [sport, setSport] =
+    useState(selectedSport)
 
   const [error, setError] = useState('')
   const [ok, setOk] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
+  const [submitting, setSubmitting] =
+    useState(false)
 
   const submit = async () => {
     setError('')
@@ -65,38 +72,92 @@ function SignupForm() {
 
     setSubmitting(true)
 
-    const { data, error: signupError } =
-      await sb.auth.signUp({
+    try {
+      /*
+       * STEP 1
+       * Create the Supabase Auth user through our
+       * server-side route.
+       *
+       * This does NOT use Supabase's email provider.
+       */
+      const response = await fetch(
+        '/api/signup',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+            password,
+            name: name.trim(),
+          }),
+        }
+      )
+
+      const result =
+        await response.json()
+
+      if (!response.ok) {
+        setError(
+          result.error ||
+            'Unable to create your account.'
+        )
+        setSubmitting(false)
+        return
+      }
+
+      if (!result.user_id) {
+        setError(
+          'Unable to create your account.'
+        )
+        setSubmitting(false)
+        return
+      }
+
+      /*
+       * STEP 2
+       * Sign in immediately.
+       *
+       * The server has already created and
+       * confirmed the account, so no email
+       * confirmation is required.
+       */
+      const {
+        error: loginError,
+      } = await sb.auth.signInWithPassword({
         email: email.trim(),
         password,
-        options: {
-          data: {
-            full_name: name.trim(),
-            role: 'club_owner',
-          },
-        },
       })
 
-    if (signupError) {
-      setError(signupError.message)
-      setSubmitting(false)
-      return
-    }
+      if (loginError) {
+        setError(
+          loginError.message
+        )
+        setSubmitting(false)
+        return
+      }
 
-    if (!data.user) {
-      setError('Unable to create your account.')
-      setSubmitting(false)
-      return
-    }
+      /*
+       * STEP 3
+       * Create the club.
+       *
+       * At this point the browser has an
+       * authenticated Supabase session, so
+       * the existing RLS policy can verify
+       * the owner.
+       */
+      const slug = club
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
 
-    const slug = club
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-
-    const { data: clubData, error: clubError } =
-      await sb
+      const {
+        data: clubData,
+        error: clubError,
+      } = await sb
         .from('clubs')
         .insert({
           name: club.trim(),
@@ -106,33 +167,60 @@ function SignupForm() {
             .toUpperCase(),
           city: '',
           slug,
-          owner_id: data.user.id,
+          owner_id: result.user_id,
           sport_type: sport,
         })
         .select('id')
         .single()
 
-    if (clubError) {
-      setError(clubError.message)
+      if (clubError) {
+        setError(
+          clubError.message
+        )
+        setSubmitting(false)
+        return
+      }
+
+      /*
+       * STEP 4
+       * Start the selected 14-day trial.
+       */
+      const {
+        error: subscriptionError,
+      } = await sb.rpc(
+        'start_club_subscription',
+        {
+          p_club_id: clubData.id,
+          p_plan_id: selectedPlan,
+          p_billing_interval: billing,
+        }
+      )
+
+      if (subscriptionError) {
+        setError(
+          subscriptionError.message
+        )
+        setSubmitting(false)
+        return
+      }
+
+      /*
+       * Everything succeeded.
+       */
       setSubmitting(false)
-      return
-    }
+      setOk(true)
+    } catch (err) {
+      console.error(
+        'Signup error:',
+        err
+      )
 
-    const { error: subscriptionError } =
-      await sb.rpc('start_club_subscription', {
-        p_club_id: clubData.id,
-        p_plan_id: selectedPlan,
-        p_billing_interval: billing,
-      })
+      setError(
+        'Something went wrong. Please try again.'
+      )
 
-    if (subscriptionError) {
-      setError(subscriptionError.message)
       setSubmitting(false)
-      return
     }
-
-    setSubmitting(false)
-    setOk(true)
   }
 
   return (
@@ -149,7 +237,10 @@ function SignupForm() {
           Sport<span>Slot</span>
         </a>
 
-        <Link className="btn" href="/login">
+        <Link
+          className="btn"
+          href="/login"
+        >
           Sign in
         </Link>
       </nav>
@@ -164,7 +255,8 @@ function SignupForm() {
         </h1>
 
         <p className="muted">
-          Start your 14-day free trial with SportSlot.
+          Start your 14-day free trial
+          with SportSlot.
         </p>
 
         {selectedPlan ? (
@@ -205,8 +297,13 @@ function SignupForm() {
               background: '#fff7ed',
             }}
           >
-            <div style={{ marginBottom: 10 }}>
-              Please choose a SportSlot plan first.
+            <div
+              style={{
+                marginBottom: 10,
+              }}
+            >
+              Please choose a SportSlot
+              plan first.
             </div>
 
             <Link
@@ -225,12 +322,13 @@ function SignupForm() {
             </h2>
 
             <p>
-              Your 14-day free trial has started.
+              Your 14-day free trial
+              has started.
             </p>
 
             <p className="muted">
-              Check your email if confirmation is
-              required, then sign in to SportSlot.
+              Your account has been
+              created successfully.
             </p>
 
             <Link
@@ -310,7 +408,10 @@ function SignupForm() {
             <button
               className="btn primary"
               onClick={submit}
-              disabled={submitting || !selectedPlan}
+              disabled={
+                submitting ||
+                !selectedPlan
+              }
             >
               {submitting
                 ? 'Creating your club…'
