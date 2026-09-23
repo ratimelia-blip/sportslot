@@ -1,88 +1,107 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { supabaseBrowser } from '../../lib/supabase'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
-export default function Signup() {
+const sports = [
+  'Watersports',
+  'Tennis',
+  'Football',
+  'Basketball',
+  'Swimming',
+  'Martial Arts',
+  'Fitness / Gym',
+  'Golf',
+  'Volleyball',
+  'Badminton',
+  'Athletics',
+  'Other',
+]
+
+function SignupForm() {
   const sb = supabaseBrowser()
   const searchParams = useSearchParams()
 
-  const selectedSport =
-    searchParams.get('sport') || ''
+  const selectedSport = searchParams.get('sport') || ''
+  const selectedPlan = searchParams.get('plan') || ''
+  const billing = searchParams.get('billing') === 'yearly'
+    ? 'yearly'
+    : 'monthly'
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [club, setClub] = useState('')
-  const [sport, setSport] =
-    useState(selectedSport)
+  const [sport, setSport] = useState(selectedSport)
 
   const [error, setError] = useState('')
   const [ok, setOk] = useState(false)
-
-  const sports = [
-    'Watersports',
-    'Tennis',
-    'Football',
-    'Basketball',
-    'Swimming',
-    'Martial Arts',
-    'Fitness / Gym',
-    'Golf',
-    'Volleyball',
-    'Badminton',
-    'Athletics',
-    'Other',
-  ]
+  const [submitting, setSubmitting] = useState(false)
 
   const submit = async () => {
     setError('')
 
     if (
-      !name ||
-      !email ||
+      !name.trim() ||
+      !email.trim() ||
       password.length < 6 ||
-      !club ||
+      !club.trim() ||
       !sport
     ) {
       setError(
         'Please complete all fields. Password must be at least 6 characters.'
       )
-
       return
     }
 
-    const { data, error: e } =
+    if (!selectedPlan) {
+      setError(
+        'Please choose a SportSlot plan before creating your club.'
+      )
+      return
+    }
+
+    setSubmitting(true)
+
+    const { data, error: signupError } =
       await sb.auth.signUp({
-        email,
+        email: email.trim(),
         password,
         options: {
           data: {
-            full_name: name,
+            full_name: name.trim(),
             role: 'club_owner',
           },
         },
       })
 
-    if (e) {
-      setError(e.message)
+    if (signupError) {
+      setError(signupError.message)
+      setSubmitting(false)
       return
     }
 
-    if (data.user) {
-      const slug = club
-        .toLowerCase()
-        .trim()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
+    if (!data.user) {
+      setError('Unable to create your account.')
+      setSubmitting(false)
+      return
+    }
 
-      const r = await sb
+    const slug = club
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+
+    const { data: clubData, error: clubError } =
+      await sb
         .from('clubs')
         .insert({
-          name: club,
+          name: club.trim(),
           short_name: club
+            .trim()
             .slice(0, 3)
             .toUpperCase(),
           city: '',
@@ -90,13 +109,29 @@ export default function Signup() {
           owner_id: data.user.id,
           sport_type: sport,
         })
+        .select('id')
+        .single()
 
-      if (r.error) {
-        setError(r.error.message)
-        return
-      }
+    if (clubError) {
+      setError(clubError.message)
+      setSubmitting(false)
+      return
     }
 
+    const { error: subscriptionError } =
+      await sb.rpc('start_club_subscription', {
+        p_club_id: clubData.id,
+        p_plan_id: selectedPlan,
+        p_billing_interval: billing,
+      })
+
+    if (subscriptionError) {
+      setError(subscriptionError.message)
+      setSubmitting(false)
+      return
+    }
+
+    setSubmitting(false)
     setOk(true)
   }
 
@@ -114,10 +149,7 @@ export default function Signup() {
           Sport<span>Slot</span>
         </a>
 
-        <Link
-          className="btn"
-          href="/login"
-        >
+        <Link className="btn" href="/login">
           Sign in
         </Link>
       </nav>
@@ -132,19 +164,73 @@ export default function Signup() {
         </h1>
 
         <p className="muted">
-          Start accepting online bookings
-          with SportSlot.
+          Start your 14-day free trial with SportSlot.
         </p>
+
+        {selectedPlan ? (
+          <div
+            style={{
+              marginBottom: 25,
+              padding: 16,
+              borderRadius: 12,
+              background: '#f1f5f9',
+            }}
+          >
+            <div
+              className="muted"
+              style={{
+                fontSize: 13,
+                marginBottom: 4,
+              }}
+            >
+              Selected plan
+            </div>
+
+            <strong>
+              {billing === 'yearly'
+                ? 'Yearly subscription'
+                : 'Monthly subscription'}
+            </strong>
+
+            <div className="muted">
+              14-day free trial
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              marginBottom: 25,
+              padding: 16,
+              borderRadius: 12,
+              background: '#fff7ed',
+            }}
+          >
+            <div style={{ marginBottom: 10 }}>
+              Please choose a SportSlot plan first.
+            </div>
+
+            <Link
+              className="btn"
+              href="/pricing"
+            >
+              View plans
+            </Link>
+          </div>
+        )}
 
         {ok ? (
           <div className="success">
             <h2>
-              Account created ✓
+              Your club is ready ✓
             </h2>
 
             <p>
-              Check your email if confirmation
-              is required, then sign in.
+              Your 14-day free trial has started.
+            </p>
+
+            <p className="muted">
+              Check your email if confirmation is
+              required, then sign in to SportSlot.
             </p>
 
             <Link
@@ -224,12 +310,29 @@ export default function Signup() {
             <button
               className="btn primary"
               onClick={submit}
+              disabled={submitting || !selectedPlan}
             >
-              Create account
+              {submitting
+                ? 'Creating your club…'
+                : 'Start free trial'}
             </button>
           </div>
         )}
       </section>
     </main>
+  )
+}
+
+export default function Signup() {
+  return (
+    <Suspense
+      fallback={
+        <main className="center">
+          Loading SportSlot…
+        </main>
+      }
+    >
+      <SignupForm />
+    </Suspense>
   )
 }
