@@ -16,6 +16,12 @@ type ServiceOption = {
   price: number
 }
 
+type BookedSlot = {
+  starts_at: string
+  ends_at: string
+  status: 'pending' | 'confirmed'
+}
+
 const OPEN_HOUR = 9
 const CLOSE_HOUR = 19
 const SLOT_INTERVAL = 15
@@ -23,6 +29,7 @@ const SLOT_INTERVAL = 15
 function localDate() {
   const d = new Date()
   const offset = d.getTimezoneOffset()
+
   return new Date(d.getTime() - offset * 60000)
     .toISOString()
     .slice(0, 10)
@@ -61,9 +68,25 @@ export default function PLC() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
 
+  const [bookedSlots, setBookedSlots] = useState<BookedSlot[]>([])
+
   const [done, setDone] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+
+  const loadBookedSlots = async (
+    clubId: string,
+    selectedDate: string
+  ) => {
+    const { data, error } = await sb.rpc('get_booked_slots', {
+      p_club_id: clubId,
+      p_date: selectedDate,
+    })
+
+    if (!error) {
+      setBookedSlots(data || [])
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -106,6 +129,9 @@ export default function PLC() {
 
       setServices(serviceData || [])
       setOptions(optionData || [])
+
+      await loadBookedSlots(club.id, date)
+
       setLoading(false)
     }
 
@@ -140,6 +166,35 @@ export default function PLC() {
     return result
   }, [option])
 
+  const getSlotStatus = (
+    slot: string
+  ): 'available' | 'pending' | 'confirmed' => {
+    if (!option) return 'available'
+
+    const slotStart = new Date(
+      `${date}T${slot}:00+04:00`
+    )
+
+    const slotEnd = new Date(
+      slotStart.getTime() +
+        option.duration_minutes * 60 * 1000
+    )
+
+    const booking = bookedSlots.find((booking) => {
+      const bookingStart = new Date(booking.starts_at)
+      const bookingEnd = new Date(booking.ends_at)
+
+      return (
+        slotStart < bookingEnd &&
+        slotEnd > bookingStart
+      )
+    })
+
+    if (!booking) return 'available'
+
+    return booking.status
+  }
+
   const selectService = (selected: Service) => {
     setService(selected)
     setOption(null)
@@ -153,6 +208,13 @@ export default function PLC() {
     if (!service || !option || !time || !name.trim()) {
       setError(
         'Please select a service, duration, time and enter your name.'
+      )
+      return
+    }
+
+    if (getSlotStatus(time) !== 'available') {
+      setError(
+        'That time is no longer available. Please choose another slot.'
       )
       return
     }
@@ -172,14 +234,26 @@ export default function PLC() {
         setError(
           'That time is already booked. Please choose another slot.'
         )
-      } else {
-        setError(error.message)
+
+        return
       }
 
+      setError(error.message)
       return
     }
 
     setDone(data?.id || 'confirmed')
+
+    // Refresh the booked slots immediately
+    const { data: club } = await sb
+      .from('clubs')
+      .select('id')
+      .eq('slug', 'poti-lake-club')
+      .single()
+
+    if (club) {
+      await loadBookedSlots(club.id, date)
+    }
   }
 
   if (loading) {
@@ -213,15 +287,27 @@ export default function PLC() {
 
         {done ? (
           <div className="success">
-            <h2>Booking confirmed ✓</h2>
+            <h2>Booking created ✓</h2>
 
             <p className="muted">
-              Your reservation has been created successfully.
+              Your reservation is waiting for confirmation.
             </p>
 
             <strong>
               Booking ID: {done}
             </strong>
+
+            <div
+              style={{
+                marginTop: 20,
+                padding: 14,
+                borderRadius: 10,
+                background: '#854d0e',
+                color: '#fff',
+              }}
+            >
+              🟡 To be confirmed
+            </div>
 
             <div style={{ marginTop: 20 }}>
               <a
@@ -302,9 +388,24 @@ export default function PLC() {
               type="date"
               value={date}
               min={localDate()}
-              onChange={(e) => {
-                setDate(e.target.value)
+              onChange={async (e) => {
+                const newDate = e.target.value
+
+                setDate(newDate)
                 setTime('')
+
+                const { data: club } = await sb
+                  .from('clubs')
+                  .select('id')
+                  .eq('slug', 'poti-lake-club')
+                  .single()
+
+                if (club) {
+                  await loadBookedSlots(
+                    club.id,
+                    newDate
+                  )
+                }
               }}
             />
 
@@ -315,27 +416,94 @@ export default function PLC() {
                 Select a duration first.
               </p>
             ) : (
-              <div className="times">
-                {slots.map((t) => (
-                  <button
-                    className="time"
-                    key={t}
-                    onClick={() => setTime(t)}
-                    style={
-                      time === t
-                        ? {
-                            borderColor:
-                              'var(--accent)',
-                            background:
-                              '#0d2d35',
+              <>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                    marginBottom: 16,
+                  }}
+                >
+                  <span>🟢 Available</span>
+                  <span>🟡 To be confirmed</span>
+                  <span>🔴 Reserved</span>
+                </div>
+
+                <div className="times">
+                  {slots.map((t) => {
+                    const status =
+                      getSlotStatus(t)
+
+                    const isAvailable =
+                      status === 'available'
+
+                    const isPending =
+                      status === 'pending'
+
+                    const isConfirmed =
+                      status === 'confirmed'
+
+                    return (
+                      <button
+                        className="time"
+                        key={t}
+                        disabled={!isAvailable}
+                        onClick={() => {
+                          if (isAvailable) {
+                            setTime(t)
                           }
-                        : {}
-                    }
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
+                        }}
+                        style={
+                          isConfirmed
+                            ? {
+                                background:
+                                  '#dc2626',
+                                borderColor:
+                                  '#dc2626',
+                                color: '#fff',
+                                cursor:
+                                  'not-allowed',
+                              }
+                            : isPending
+                            ? {
+                                background:
+                                  '#eab308',
+                                borderColor:
+                                  '#eab308',
+                                color: '#111',
+                                cursor:
+                                  'not-allowed',
+                              }
+                            : time === t
+                            ? {
+                                background:
+                                  '#0d2d35',
+                                borderColor:
+                                  'var(--accent)',
+                                color: '#fff',
+                              }
+                            : {
+                                background:
+                                  '#16a34a',
+                                borderColor:
+                                  '#16a34a',
+                                color: '#fff',
+                              }
+                        }
+                      >
+                        {isConfirmed
+                          ? `${t} — RESERVED`
+                          : isPending
+                          ? `${t} — TO BE CONFIRMED`
+                          : time === t
+                          ? `${t} — SELECTED`
+                          : `${t} — AVAILABLE`}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
             )}
 
             <h3>5. Your details</h3>
@@ -387,6 +555,11 @@ export default function PLC() {
               <button
                 className="btn primary"
                 onClick={submit}
+                disabled={
+                  !time ||
+                  getSlotStatus(time) !==
+                    'available'
+                }
               >
                 Confirm booking
               </button>
