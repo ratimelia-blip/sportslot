@@ -3,7 +3,6 @@
 import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { supabaseBrowser } from '../../lib/supabase'
 
 const sports = [
   'Watersports',
@@ -21,7 +20,6 @@ const sports = [
 ]
 
 function SignupForm() {
-  const sb = supabaseBrowser()
   const searchParams = useSearchParams()
 
   const selectedSport =
@@ -73,13 +71,6 @@ function SignupForm() {
     setSubmitting(true)
 
     try {
-      /*
-       * STEP 1
-       * Create the Supabase Auth user through our
-       * server-side route.
-       *
-       * This does NOT use Supabase's email provider.
-       */
       const response = await fetch(
         '/api/signup',
         {
@@ -92,6 +83,10 @@ function SignupForm() {
             email: email.trim(),
             password,
             name: name.trim(),
+            club: club.trim(),
+            sport,
+            planId: selectedPlan,
+            billing,
           }),
         }
       )
@@ -102,117 +97,18 @@ function SignupForm() {
       if (!response.ok) {
         setError(
           result.error ||
-            'Unable to create your account.'
+            'Unable to create your club.'
         )
         setSubmitting(false)
         return
       }
 
-      if (!result.user_id) {
-        setError(
-          'Unable to create your account.'
-        )
-        setSubmitting(false)
-        return
-      }
-
-      /*
-       * STEP 2
-       * Sign in immediately.
-       *
-       * The server has already created and
-       * confirmed the account, so no email
-       * confirmation is required.
-       */
-      const {
-        error: loginError,
-      } = await sb.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      })
-
-      if (loginError) {
-        setError(
-          loginError.message
-        )
-        setSubmitting(false)
-        return
-      }
-
-      /*
-       * STEP 3
-       * Create the club.
-       *
-       * At this point the browser has an
-       * authenticated Supabase session, so
-       * the existing RLS policy can verify
-       * the owner.
-       */
-      const slug = club
-        .toLowerCase()
-        .trim()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
-
-      const {
-        data: clubData,
-        error: clubError,
-      } = await sb
-        .from('clubs')
-        .insert({
-          name: club.trim(),
-          short_name: club
-            .trim()
-            .slice(0, 3)
-            .toUpperCase(),
-          city: '',
-          slug,
-          owner_id: result.user_id,
-          sport_type: sport,
-        })
-        .select('id')
-        .single()
-
-      if (clubError) {
-        setError(
-          clubError.message
-        )
-        setSubmitting(false)
-        return
-      }
-
-      /*
-       * STEP 4
-       * Start the selected 14-day trial.
-       */
-      const {
-        error: subscriptionError,
-      } = await sb.rpc(
-        'start_club_subscription',
-        {
-          p_club_id: clubData.id,
-          p_plan_id: selectedPlan,
-          p_billing_interval: billing,
-        }
-      )
-
-      if (subscriptionError) {
-        setError(
-          subscriptionError.message
-        )
-        setSubmitting(false)
-        return
-      }
-
-      /*
-       * Everything succeeded.
-       */
       setSubmitting(false)
       setOk(true)
-    } catch (err) {
+    } catch (error) {
       console.error(
         'Signup error:',
-        err
+        error
       )
 
       setError(
@@ -327,7 +223,8 @@ function SignupForm() {
             </p>
 
             <p className="muted">
-              Your account has been
+              Your SportSlot account,
+              club, and trial have been
               created successfully.
             </p>
 
