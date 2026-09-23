@@ -30,10 +30,13 @@ export async function POST(request: Request) {
     const supabaseUrl =
       process.env.NEXT_PUBLIC_SUPABASE_URL
 
-    const secretKey =
-      process.env.SUPABASE_SECRET_KEY
+    // IMPORTANT:
+    // This reads the secret from the Vercel
+    // environment variable named SUPABASE_ADMIN_KEY.
+    const adminKey =
+      process.env.SUPABASE_ADMIN_KEY
 
-    if (!supabaseUrl || !secretKey) {
+    if (!supabaseUrl || !adminKey) {
       return NextResponse.json(
         {
           error:
@@ -45,7 +48,7 @@ export async function POST(request: Request) {
 
     const admin = createClient(
       supabaseUrl,
-      secretKey,
+      adminKey,
       {
         auth: {
           autoRefreshToken: false,
@@ -68,7 +71,9 @@ export async function POST(request: Request) {
 
     if (error) {
       return NextResponse.json(
-        { error: error.message },
+        {
+          error: error.message,
+        },
         { status: 400 }
       )
     }
@@ -86,7 +91,12 @@ export async function POST(request: Request) {
     return NextResponse.json({
       user_id: data.user.id,
     })
-  } catch {
+  } catch (error) {
+    console.error(
+      'Signup route error:',
+      error
+    )
+
     return NextResponse.json(
       {
         error:
