@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 export async function POST(request: Request) {
+  let createdUserId = ''
+
   try {
     const body = await request.json()
 
@@ -66,21 +68,20 @@ export async function POST(request: Request) {
       }
     )
 
-    /*
-     * 1. Create Auth user
-     */
+    // Create the Auth user
     const {
       data: userData,
       error: userError,
-    } = await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        full_name: name,
-        role: 'club_owner',
-      },
-    })
+    } =
+      await admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: name,
+          role: 'club_owner',
+        },
+      })
 
     if (userError) {
       return NextResponse.json(
@@ -101,135 +102,113 @@ export async function POST(request: Request) {
       )
     }
 
-    const userId = userData.user.id
+    createdUserId = userData.user.id
 
-    /*
-     * 2. Create club slug
-     */
-    const slug = clubName
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-
-    /*
-     * 3. Create club using the server-side
-     * admin client.
-     */
+    // Create club + subscription using
+    // the Supabase database function.
     const {
-      data: clubData,
-      error: clubError,
-    } = await admin
-      .from('clubs')
-      .insert({
-        name: clubName,
-        short_name: clubName
-          .slice(0, 3)
-          .toUpperCase(),
-        city: '',
-        slug,
-        owner_id: userId,
-        sport_type: sport,
-      })
-      .select('id')
-      .single()
+      data: setupData,
+      error: setupError,
+    } =
+      await admin.rpc(
+        'create_club_and_trial',
+        {
+          p_user_id: createdUserId,
+          p_club_name: clubName,
+          p_sport: sport,
+          p_plan_id: planId,
+          p_billing_interval: billing,
+        }
+      )
 
-    if (clubError) {
+    if (setupError) {
       console.error(
-        'Club creation error:',
-        clubError
+        'Club setup error:',
+        setupError
       )
+
+      // Remove the Auth user if the club
+      // could not be created.
+      try {
+        await admin.auth.admin.deleteUser(
+          createdUserId
+        )
+      } catch (deleteError) {
+        console.error(
+          'Could not clean up user:',
+          deleteError
+        )
+      }
 
       return NextResponse.json(
         {
           error:
-            'Account created, but we could not create your club: ' +
-            clubError.message,
+            'We could not finish creating your club: ' +
+            setupError.message,
         },
         { status: 400 }
       )
     }
 
-    /*
-     * 4. Verify selected subscription plan
-     */
-    const {
-      data: plan,
-      error: planError,
-    } = await admin
-      .from('subscription_plans')
-      .select('id,name,active')
-      .eq('id', planId)
-      .eq('active', true)
-      .single()
-
-    if (planError || !plan) {
-      return NextResponse.json(
-        {
-          error:
-            'The selected SportSlot plan is no longer available.',
-        },
-        { status: 400 }
-      )
-    }
-
-    /*
-     * 5. Start 14-day trial
-     */
-    const now = new Date()
-
-    const trialEnd = new Date(now)
-    trialEnd.setDate(
-      trialEnd.getDate() + 14
-    )
-
-    const {
-      error: subscriptionError,
-    } = await admin
-      .from('club_subscriptions')
-      .insert({
-        club_id: clubData.id,
-        plan_id: plan.id,
-        billing_interval: billing,
-        status: 'trial',
-        current_period_start:
-          now.toISOString(),
-        current_period_end:
-          trialEnd.toISOString(),
-      })
-
-    if (subscriptionError) {
-      console.error(
-        'Subscription creation error:',
-        subscriptionError
-      )
-
-      return NextResponse.json(
-        {
-          error:
-            'Club created, but we could not start the trial: ' +
-            subscriptionError.message,
-        },
-        { status: 400 }
-      )
-    }
-
-    /*
-     * Everything succeeded.
-     */
     return NextResponse.json({
       success: true,
-      user_id: userId,
-      club_id: clubData.id,
-      plan_id: plan.id,
-      plan_name: plan.name,
-      billing,
+      user_id: createdUserId,
+      club_id:
+        setupData?.club_id,
+      plan_id:
+        setupData?.plan_id,
+      billing:
+        setupData?.billing,
+      trial_ends_at:
+        setupData?.trial_ends_at,
     })
   } catch (error) {
     console.error(
       'Signup route error:',
       error
     )
+
+    // Clean up an Auth user if something
+    // unexpected happened.
+    if (createdUserId) {
+      try {
+        const supabaseUrl =
+          process.env.NEXT_PUBLIC_SUPABASE_URL
+
+        const adminKey =
+          process.env.SUPABASE_ADMIN_KEY
+
+        if (
+          supabaseUrl &&
+          adminKey
+        ) {
+          const admin =
+            createClient(
+              supabaseUrl,
+              adminKey,
+              {
+                auth: {
+                  autoRefreshToken:
+                    false,
+                  persistSession:
+                    false,
+                  detectSessionInUrl:
+                    false,
+                },
+              }
+            )
+
+          await admin.auth.admin.deleteUser(
+            createdUserId
+          )
+        }
+      } catch (cleanupError) {
+        console.error(
+          'Cleanup error:',
+          cleanupError
+        )
+      }
+    }
 
     return NextResponse.json(
       {
