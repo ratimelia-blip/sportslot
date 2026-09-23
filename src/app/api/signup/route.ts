@@ -11,17 +11,28 @@ export async function POST(request: Request) {
 
     const password = String(body.password || '')
     const name = String(body.name || '').trim()
+    const clubName = String(body.club || '').trim()
+    const sport = String(body.sport || '').trim()
+    const planId = String(body.planId || '').trim()
+
+    const billing =
+      body.billing === 'yearly'
+        ? 'yearly'
+        : 'monthly'
 
     if (
       !email ||
       !password ||
       password.length < 6 ||
-      !name
+      !name ||
+      !clubName ||
+      !sport ||
+      !planId
     ) {
       return NextResponse.json(
         {
           error:
-            'Please provide a valid name, email, and password.',
+            'Please complete all signup fields.',
         },
         { status: 400 }
       )
@@ -30,9 +41,6 @@ export async function POST(request: Request) {
     const supabaseUrl =
       process.env.NEXT_PUBLIC_SUPABASE_URL
 
-    // IMPORTANT:
-    // This reads the secret from the Vercel
-    // environment variable named SUPABASE_ADMIN_KEY.
     const adminKey =
       process.env.SUPABASE_ADMIN_KEY
 
@@ -58,27 +66,32 @@ export async function POST(request: Request) {
       }
     )
 
-    const { data, error } =
-      await admin.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: name,
-          role: 'club_owner',
-        },
-      })
+    /*
+     * 1. Create Auth user
+     */
+    const {
+      data: userData,
+      error: userError,
+    } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: name,
+        role: 'club_owner',
+      },
+    })
 
-    if (error) {
+    if (userError) {
       return NextResponse.json(
         {
-          error: error.message,
+          error: userError.message,
         },
         { status: 400 }
       )
     }
 
-    if (!data.user) {
+    if (!userData.user) {
       return NextResponse.json(
         {
           error:
@@ -88,8 +101,129 @@ export async function POST(request: Request) {
       )
     }
 
+    const userId = userData.user.id
+
+    /*
+     * 2. Create club slug
+     */
+    const slug = clubName
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+
+    /*
+     * 3. Create club using the server-side
+     * admin client.
+     */
+    const {
+      data: clubData,
+      error: clubError,
+    } = await admin
+      .from('clubs')
+      .insert({
+        name: clubName,
+        short_name: clubName
+          .slice(0, 3)
+          .toUpperCase(),
+        city: '',
+        slug,
+        owner_id: userId,
+        sport_type: sport,
+      })
+      .select('id')
+      .single()
+
+    if (clubError) {
+      console.error(
+        'Club creation error:',
+        clubError
+      )
+
+      return NextResponse.json(
+        {
+          error:
+            'Account created, but we could not create your club: ' +
+            clubError.message,
+        },
+        { status: 400 }
+      )
+    }
+
+    /*
+     * 4. Verify selected subscription plan
+     */
+    const {
+      data: plan,
+      error: planError,
+    } = await admin
+      .from('subscription_plans')
+      .select('id,name,active')
+      .eq('id', planId)
+      .eq('active', true)
+      .single()
+
+    if (planError || !plan) {
+      return NextResponse.json(
+        {
+          error:
+            'The selected SportSlot plan is no longer available.',
+        },
+        { status: 400 }
+      )
+    }
+
+    /*
+     * 5. Start 14-day trial
+     */
+    const now = new Date()
+
+    const trialEnd = new Date(now)
+    trialEnd.setDate(
+      trialEnd.getDate() + 14
+    )
+
+    const {
+      error: subscriptionError,
+    } = await admin
+      .from('club_subscriptions')
+      .insert({
+        club_id: clubData.id,
+        plan_id: plan.id,
+        billing_interval: billing,
+        status: 'trial',
+        current_period_start:
+          now.toISOString(),
+        current_period_end:
+          trialEnd.toISOString(),
+      })
+
+    if (subscriptionError) {
+      console.error(
+        'Subscription creation error:',
+        subscriptionError
+      )
+
+      return NextResponse.json(
+        {
+          error:
+            'Club created, but we could not start the trial: ' +
+            subscriptionError.message,
+        },
+        { status: 400 }
+      )
+    }
+
+    /*
+     * Everything succeeded.
+     */
     return NextResponse.json({
-      user_id: data.user.id,
+      success: true,
+      user_id: userId,
+      club_id: clubData.id,
+      plan_id: plan.id,
+      plan_name: plan.name,
+      billing,
     })
   } catch (error) {
     console.error(
@@ -100,7 +234,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          'Unable to create your account.',
+          'Something went wrong while creating your club.',
       },
       { status: 500 }
     )
