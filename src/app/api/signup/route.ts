@@ -22,6 +22,10 @@ export async function POST(request: Request) {
         ? 'yearly'
         : 'monthly'
 
+    // --------------------------------------------------
+    // Validate signup data
+    // --------------------------------------------------
+
     if (
       !email ||
       !password ||
@@ -33,12 +37,17 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json(
         {
-          error:
-            'Please complete all signup fields.',
+          success: false,
+          version: 'signup-v2-tennis',
+          error: 'Please complete all signup fields.',
         },
         { status: 400 }
       )
     }
+
+    // --------------------------------------------------
+    // Supabase configuration
+    // --------------------------------------------------
 
     const supabaseUrl =
       process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -49,12 +58,18 @@ export async function POST(request: Request) {
     if (!supabaseUrl || !adminKey) {
       return NextResponse.json(
         {
+          success: false,
+          version: 'signup-v2-tennis',
           error:
             'Server authentication is not configured.',
         },
         { status: 500 }
       )
     }
+
+    // --------------------------------------------------
+    // Create Supabase admin client
+    // --------------------------------------------------
 
     const admin = createClient(
       supabaseUrl,
@@ -68,7 +83,11 @@ export async function POST(request: Request) {
       }
     )
 
-    // Create the Auth user
+    // --------------------------------------------------
+    // STEP 1
+    // Create Auth user
+    // --------------------------------------------------
+
     const {
       data: userData,
       error: userError,
@@ -84,8 +103,15 @@ export async function POST(request: Request) {
       })
 
     if (userError) {
+      console.error(
+        'Signup Auth user error:',
+        userError
+      )
+
       return NextResponse.json(
         {
+          success: false,
+          version: 'signup-v2-tennis',
           error: userError.message,
         },
         { status: 400 }
@@ -95,6 +121,8 @@ export async function POST(request: Request) {
     if (!userData.user) {
       return NextResponse.json(
         {
+          success: false,
+          version: 'signup-v2-tennis',
           error:
             'Unable to create your account.',
         },
@@ -104,8 +132,16 @@ export async function POST(request: Request) {
 
     createdUserId = userData.user.id
 
-    // Create club + subscription using
-    // the Supabase database function.
+    console.log(
+      'SIGNUP-V2: Auth user created:',
+      createdUserId
+    )
+
+    // --------------------------------------------------
+    // STEP 2
+    // Create club + 14-day trial
+    // --------------------------------------------------
+
     const {
       data: setupData,
       error: setupError,
@@ -123,53 +159,79 @@ export async function POST(request: Request) {
 
     if (setupError) {
       console.error(
-        'Club setup error:',
+        'SIGNUP-V2: Club setup error:',
         setupError
       )
 
-      // Remove the Auth user if the club
-      // could not be created.
+      // --------------------------------------------------
+      // Cleanup Auth user if club creation failed
+      // --------------------------------------------------
+
       try {
         await admin.auth.admin.deleteUser(
           createdUserId
         )
+
+        console.log(
+          'SIGNUP-V2: Auth user cleaned up:',
+          createdUserId
+        )
       } catch (deleteError) {
         console.error(
-          'Could not clean up user:',
+          'SIGNUP-V2: Could not clean up user:',
           deleteError
         )
       }
 
       return NextResponse.json(
         {
+          success: false,
+          version: 'signup-v2-tennis',
           error:
-            'We could not finish creating your club: ' +
+            'SIGNUP-V2: We could not finish creating your club: ' +
             setupError.message,
         },
         { status: 400 }
       )
     }
 
+    // --------------------------------------------------
+    // SUCCESS
+    // --------------------------------------------------
+
+    console.log(
+      'SIGNUP-V2: Club successfully created:',
+      setupData
+    )
+
     return NextResponse.json({
       success: true,
+      version: 'signup-v2-tennis',
+
       user_id: createdUserId,
+
       club_id:
         setupData?.club_id,
+
       plan_id:
         setupData?.plan_id,
+
       billing:
         setupData?.billing,
+
       trial_ends_at:
         setupData?.trial_ends_at,
     })
   } catch (error) {
     console.error(
-      'Signup route error:',
+      'SIGNUP-V2: Unexpected signup error:',
       error
     )
 
-    // Clean up an Auth user if something
-    // unexpected happened.
+    // --------------------------------------------------
+    // Cleanup Auth user if something unexpected happened
+    // --------------------------------------------------
+
     if (createdUserId) {
       try {
         const supabaseUrl =
@@ -188,12 +250,9 @@ export async function POST(request: Request) {
               adminKey,
               {
                 auth: {
-                  autoRefreshToken:
-                    false,
-                  persistSession:
-                    false,
-                  detectSessionInUrl:
-                    false,
+                  autoRefreshToken: false,
+                  persistSession: false,
+                  detectSessionInUrl: false,
                 },
               }
             )
@@ -201,10 +260,15 @@ export async function POST(request: Request) {
           await admin.auth.admin.deleteUser(
             createdUserId
           )
+
+          console.log(
+            'SIGNUP-V2: Cleanup successful:',
+            createdUserId
+          )
         }
       } catch (cleanupError) {
         console.error(
-          'Cleanup error:',
+          'SIGNUP-V2: Cleanup error:',
           cleanupError
         )
       }
@@ -212,8 +276,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
+        success: false,
+        version: 'signup-v2-tennis',
         error:
-          'Something went wrong while creating your club.',
+          'SIGNUP-V2: Something went wrong while creating your club.',
       },
       { status: 500 }
     )
