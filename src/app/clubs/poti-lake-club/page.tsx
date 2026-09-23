@@ -222,6 +222,15 @@ export default function PLC() {
             <strong>
               Booking ID: {done}
             </strong>
+
+            <div style={{ marginTop: 20 }}>
+              <a
+                href="/clubs/poti-lake-club"
+                className="btn primary"
+              >
+                Back to booking
+              </a>
+            </div>
           </div>
         ) : (
           <>
