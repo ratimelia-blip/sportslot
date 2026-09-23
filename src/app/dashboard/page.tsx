@@ -86,12 +86,16 @@ export default function Dashboard() {
             'id,customer_name,starts_at,ends_at,price,status,services(name)'
           )
           .eq('club_id', c.data.id)
-          .order('starts_at', { ascending: true })
+          .order('starts_at', {
+            ascending: true,
+          })
           .limit(100),
 
         sb
           .from('services')
-          .select('id,name,description,active')
+          .select(
+            'id,name,description,active'
+          )
           .eq('club_id', c.data.id)
           .order('name'),
 
@@ -119,31 +123,37 @@ export default function Dashboard() {
   const addService = async () => {
     if (!club || !newName.trim()) return
 
-    const { data: service, error } = await sb
-      .from('services')
-      .insert({
-        club_id: club.id,
-        name: newName.trim(),
-        duration_minutes: 30,
-        price: 100,
-        active: true,
-      })
-      .select()
-      .single()
+    const { data: service, error } =
+      await sb
+        .from('services')
+        .insert({
+          club_id: club.id,
+          name: newName.trim(),
+          duration_minutes: 30,
+          price: 100,
+          active: true,
+        })
+        .select()
+        .single()
 
     if (error || !service) {
-      alert(error?.message || 'Could not create service')
+      alert(
+        error?.message ||
+          'Could not create service'
+      )
       return
     }
 
-    await sb.from('service_options').insert(
-      durations.map((d) => ({
-        service_id: service.id,
-        duration_minutes: d.value,
-        price: 0,
-        active: true,
-      }))
-    )
+    await sb
+      .from('service_options')
+      .insert(
+        durations.map((d) => ({
+          service_id: service.id,
+          duration_minutes: d.value,
+          price: 0,
+          active: true,
+        }))
+      )
 
     setNewName('')
     await load()
@@ -155,26 +165,40 @@ export default function Dashboard() {
   ) => {
     const value = Number(price)
 
-    if (Number.isNaN(value) || value < 0) return
+    if (
+      Number.isNaN(value) ||
+      value < 0
+    ) {
+      return
+    }
 
     await sb
       .from('service_options')
-      .update({ price: value })
+      .update({
+        price: value,
+      })
       .eq('id', optionId)
 
     setOptions((current) =>
       current.map((o) =>
         o.id === optionId
-          ? { ...o, price: value }
+          ? {
+              ...o,
+              price: value,
+            }
           : o
       )
     )
   }
 
-  const toggleService = async (service: Service) => {
+  const toggleService = async (
+    service: Service
+  ) => {
     await sb
       .from('services')
-      .update({ active: !service.active })
+      .update({
+        active: !service.active,
+      })
       .eq('id', service.id)
 
     await load()
@@ -183,6 +207,54 @@ export default function Dashboard() {
   const signout = async () => {
     await sb.auth.signOut()
     location.href = '/login'
+  }
+
+  const confirmBooking = async (
+    bookingId: string
+  ) => {
+    const confirmed = window.confirm(
+      'Confirm this booking?'
+    )
+
+    if (!confirmed) return
+
+    const { error } = await sb
+      .from('bookings')
+      .update({
+        status: 'confirmed',
+      })
+      .eq('id', bookingId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    await load()
+  }
+
+  const rejectBooking = async (
+    bookingId: string
+  ) => {
+    const confirmed = window.confirm(
+      'Are you sure you want to reject this booking?'
+    )
+
+    if (!confirmed) return
+
+    const { error } = await sb
+      .from('bookings')
+      .update({
+        status: 'cancelled',
+      })
+      .eq('id', bookingId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    await load()
   }
 
   if (loading) {
@@ -201,7 +273,8 @@ export default function Dashboard() {
         </div>
 
         <div className="club-mini">
-          {club?.name || 'No club yet'}
+          {club?.name ||
+            'No club yet'}
         </div>
 
         <nav className="dashnav">
@@ -214,9 +287,13 @@ export default function Dashboard() {
             <button
               key={x[0]}
               className={`navitem ${
-                tab === x[0] ? 'active' : ''
+                tab === x[0]
+                  ? 'active'
+                  : ''
               }`}
-              onClick={() => setTab(x[0])}
+              onClick={() =>
+                setTab(x[0])
+              }
             >
               {x[1]}
             </button>
@@ -235,7 +312,10 @@ export default function Dashboard() {
             Public page
           </Link>
 
-          <button className="btn" onClick={signout}>
+          <button
+            className="btn"
+            onClick={signout}
+          >
             Sign out
           </button>
         </div>
@@ -243,12 +323,15 @@ export default function Dashboard() {
 
       <section className="main">
 
-        {/* BACK BUTTON */}
         {tab !== 'overview' && (
           <button
             className="btn"
-            onClick={() => setTab('overview')}
-            style={{ marginBottom: 16 }}
+            onClick={() =>
+              setTab('overview')
+            }
+            style={{
+              marginBottom: 16,
+            }}
           >
             ← Back to Overview
           </button>
@@ -256,7 +339,9 @@ export default function Dashboard() {
 
         <div className="topline">
           <div>
-            <div className="muted">{email}</div>
+            <div className="muted">
+              {email}
+            </div>
 
             <h1>
               {tab === 'overview'
@@ -290,9 +375,11 @@ export default function Dashboard() {
                   {
                     bookings.filter(
                       (b) =>
-                        new Date(b.starts_at) >
-                          new Date() &&
-                        b.status !== 'cancelled'
+                        new Date(
+                          b.starts_at
+                        ) > new Date() &&
+                        b.status !==
+                          'cancelled'
                     ).length
                   }
                 </strong>
@@ -303,7 +390,9 @@ export default function Dashboard() {
                   Services
                 </span>
 
-                <strong>{services.length}</strong>
+                <strong>
+                  {services.length}
+                </strong>
               </div>
 
               <div className="stat">
@@ -313,9 +402,17 @@ export default function Dashboard() {
 
                 <strong>
                   {bookings
+                    .filter(
+                      (b) =>
+                        b.status !==
+                        'cancelled'
+                    )
                     .reduce(
                       (a, b) =>
-                        a + (Number(b.price) || 0),
+                        a +
+                        (Number(
+                          b.price
+                        ) || 0),
                       0
                     )
                     .toLocaleString()}{' '}
@@ -325,9 +422,21 @@ export default function Dashboard() {
             </div>
 
             <div className="card section">
-              <h2>Upcoming bookings</h2>
+              <h2>
+                Upcoming bookings
+              </h2>
+
               <BookingTable
-                bookings={bookings.slice(0, 8)}
+                bookings={bookings.slice(
+                  0,
+                  8
+                )}
+                onConfirm={
+                  confirmBooking
+                }
+                onReject={
+                  rejectBooking
+                }
               />
             </div>
           </>
@@ -335,14 +444,27 @@ export default function Dashboard() {
 
         {tab === 'bookings' && (
           <div className="card section">
-            <h2>All bookings</h2>
-            <BookingTable bookings={bookings} />
+            <h2>
+              All bookings
+            </h2>
+
+            <BookingTable
+              bookings={bookings}
+              onConfirm={
+                confirmBooking
+              }
+              onReject={
+                rejectBooking
+              }
+            />
           </div>
         )}
 
         {tab === 'services' && (
           <div className="card section">
-            <h2>Services & pricing</h2>
+            <h2>
+              Services & pricing
+            </h2>
 
             <div className="addrow">
               <input
@@ -350,179 +472,216 @@ export default function Dashboard() {
                 placeholder="Service name"
                 value={newName}
                 onChange={(e) =>
-                  setNewName(e.target.value)
+                  setNewName(
+                    e.target.value
+                  )
                 }
               />
 
               <button
                 className="btn primary"
-                onClick={addService}
+                onClick={
+                  addService
+                }
               >
                 Add service
               </button>
             </div>
 
             <div className="service-list">
-              {services.map((service) => {
-                const serviceOptions =
-                  options.filter(
-                    (o) =>
-                      o.service_id === service.id
-                  )
+              {services.map(
+                (service) => {
+                  const serviceOptions =
+                    options.filter(
+                      (o) =>
+                        o.service_id ===
+                        service.id
+                    )
 
-                return (
-                  <div
-                    className="card"
-                    key={service.id}
-                    style={{
-                      marginTop: 16,
-                      padding: 20,
-                    }}
-                  >
+                  return (
                     <div
+                      className="card"
+                      key={
+                        service.id
+                      }
                       style={{
-                        display: 'flex',
-                        justifyContent:
-                          'space-between',
-                        alignItems: 'center',
-                        gap: 16,
+                        marginTop: 16,
+                        padding: 20,
                       }}
                     >
-                      <div>
-                        <strong>
-                          {service.name}
-                        </strong>
+                      <div
+                        style={{
+                          display:
+                            'flex',
+                          justifyContent:
+                            'space-between',
+                          alignItems:
+                            'center',
+                          gap: 16,
+                        }}
+                      >
+                        <div>
+                          <strong>
+                            {
+                              service.name
+                            }
+                          </strong>
 
-                        <div className="muted">
-                          {service.active
-                            ? 'Active'
-                            : 'Inactive'}
+                          <div className="muted">
+                            {service.active
+                              ? 'Active'
+                              : 'Inactive'}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            display:
+                              'flex',
+                            gap: 8,
+                          }}
+                        >
+                          <button
+                            className="btn"
+                            onClick={() =>
+                              setEditingService(
+                                editingService ===
+                                  service.id
+                                  ? null
+                                  : service.id
+                              )
+                            }
+                          >
+                            {editingService ===
+                            service.id
+                              ? 'Close'
+                              : 'Edit'}
+                          </button>
+
+                          <button
+                            className="btn"
+                            onClick={() =>
+                              toggleService(
+                                service
+                              )
+                            }
+                          >
+                            {service.active
+                              ? 'Disable'
+                              : 'Enable'}
+                          </button>
                         </div>
                       </div>
 
-                      <div
-                        style={{
-                          display: 'flex',
-                          gap: 8,
-                        }}
-                      >
-                        <button
-                          className="btn"
-                          onClick={() =>
-                            setEditingService(
-                              editingService ===
-                                service.id
-                                ? null
-                                : service.id
-                            )
-                          }
+                      {editingService ===
+                        service.id && (
+                        <div
+                          style={{
+                            marginTop: 20,
+                            display:
+                              'grid',
+                            gap: 10,
+                          }}
                         >
-                          {editingService ===
-                          service.id
-                            ? 'Close'
-                            : 'Edit'}
-                        </button>
+                          <strong>
+                            Duration &
+                            price
+                          </strong>
 
-                        <button
-                          className="btn"
-                          onClick={() =>
-                            toggleService(service)
-                          }
-                        >
-                          {service.active
-                            ? 'Disable'
-                            : 'Enable'}
-                        </button>
-                      </div>
-                    </div>
+                          {durations.map(
+                            (d) => {
+                              const current =
+                                serviceOptions.find(
+                                  (o) =>
+                                    o.duration_minutes ===
+                                    d.value
+                                )
 
-                    {editingService ===
-                      service.id && (
-                      <div
-                        style={{
-                          marginTop: 20,
-                          display: 'grid',
-                          gap: 10,
-                        }}
-                      >
-                        <strong>
-                          Duration & price
-                        </strong>
-
-                        {durations.map((d) => {
-                          const current =
-                            serviceOptions.find(
-                              (o) =>
-                                o.duration_minutes ===
-                                d.value
-                            )
-
-                          return (
-                            <div
-                              key={d.value}
-                              style={{
-                                display: 'flex',
-                                alignItems:
-                                  'center',
-                                gap: 12,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  flex: 1,
-                                }}
-                              >
-                                {d.label}
-                              </div>
-
-                              <input
-                                className="input small"
-                                type="number"
-                                min="0"
-                                value={
-                                  current?.price ??
-                                  0
-                                }
-                                onChange={(e) => {
-                                  if (current) {
-                                    updateOption(
-                                      current.id,
-                                      e.target.value
-                                    )
+                              return (
+                                <div
+                                  key={
+                                    d.value
                                   }
-                                }}
-                              />
+                                  style={{
+                                    display:
+                                      'flex',
+                                    alignItems:
+                                      'center',
+                                    gap: 12,
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      flex: 1,
+                                    }}
+                                  >
+                                    {
+                                      d.label
+                                    }
+                                  </div>
 
-                              <span className="muted">
-                                GEL
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+                                  <input
+                                    className="input small"
+                                    type="number"
+                                    min="0"
+                                    value={
+                                      current?.price ??
+                                      0
+                                    }
+                                    onChange={(
+                                      e
+                                    ) => {
+                                      if (
+                                        current
+                                      ) {
+                                        updateOption(
+                                          current.id,
+                                          e
+                                            .target
+                                            .value
+                                        )
+                                      }
+                                    }}
+                                  />
+
+                                  <span className="muted">
+                                    GEL
+                                  </span>
+                                </div>
+                              )
+                            }
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
+              )}
             </div>
           </div>
         )}
 
         {tab === 'settings' && (
           <div className="card section">
-            <h2>Club settings</h2>
+            <h2>
+              Club settings
+            </h2>
 
             <p>
-              <strong>{club?.name}</strong>
+              <strong>
+                {club?.name}
+              </strong>
             </p>
 
             <p className="muted">
-              Slug: /clubs/{club?.slug}
+              Slug: /clubs/
+              {club?.slug}
             </p>
 
             <p className="muted">
-              Opening hours, blocked periods,
-              branding and staff management will
+              Opening hours, blocked
+              periods, branding and
+              staff management will
               be added here.
             </p>
           </div>
@@ -534,13 +693,23 @@ export default function Dashboard() {
 
 function BookingTable({
   bookings,
+  onConfirm,
+  onReject,
 }: {
   bookings: Booking[]
+  onConfirm: (
+    bookingId: string
+  ) => void
+  onReject: (
+    bookingId: string
+  ) => void
 }) {
   return (
     <div className="table">
       {bookings.length === 0 ? (
-        <p className="muted">No bookings yet.</p>
+        <p className="muted">
+          No bookings yet.
+        </p>
       ) : (
         bookings.map((b) => (
           <div
@@ -548,22 +717,112 @@ function BookingTable({
             key={b.id}
           >
             <div>
-              <strong>{b.customer_name}</strong>
+              <strong>
+                {b.customer_name}
+              </strong>
 
               <div className="muted">
-                {b.services?.name || 'Service'} ·{' '}
+                {b.services?.name ||
+                  'Service'}{' '}
+                ·{' '}
                 {new Date(
                   b.starts_at
                 ).toLocaleString()}
               </div>
             </div>
 
-            <div>
-              <strong>{b.price} GEL</strong>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection:
+                  'column',
+                alignItems:
+                  'flex-end',
+                gap: 8,
+              }}
+            >
+              <strong>
+                {b.price} GEL
+              </strong>
 
-              <div className="pill">
-                {b.status}
+              <div
+                className="pill"
+                style={{
+                  background:
+                    b.status ===
+                    'confirmed'
+                      ? '#991b1b'
+                      : b.status ===
+                        'pending'
+                      ? '#eab308'
+                      : b.status ===
+                        'cancelled'
+                      ? '#6b7280'
+                      : undefined,
+                  color:
+                    b.status ===
+                    'pending'
+                      ? '#111'
+                      : '#fff',
+                }}
+              >
+                {b.status ===
+                'pending'
+                  ? 'TO BE CONFIRMED'
+                  : b.status ===
+                    'confirmed'
+                  ? 'RESERVED'
+                  : b.status ===
+                    'cancelled'
+                  ? 'REJECTED'
+                  : b.status}
               </div>
+
+              {b.status ===
+                'pending' && (
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 8,
+                  }}
+                >
+                  <button
+                    className="btn"
+                    onClick={() =>
+                      onConfirm(
+                        b.id
+                      )
+                    }
+                    style={{
+                      background:
+                        '#16a34a',
+                      borderColor:
+                        '#16a34a',
+                      color: '#fff',
+                    }}
+                  >
+                    Confirm
+                  </button>
+
+                  <button
+                    className="btn"
+                    onClick={() =>
+                      onReject(
+                        b.id
+                      )
+                    }
+                    style={{
+                      background:
+                        '#991b1b',
+                      borderColor:
+                        '#991b1b',
+                      color: '#fff',
+                    }}
+                  >
+                    Reject
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ))
