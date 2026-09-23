@@ -3,16 +3,39 @@
 import { useState } from 'react'
 import { supabaseBrowser } from '../../lib/supabase'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 export default function Signup() {
   const sb = supabaseBrowser()
+  const searchParams = useSearchParams()
+
+  const selectedSport =
+    searchParams.get('sport') || ''
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [club, setClub] = useState('')
+  const [sport, setSport] =
+    useState(selectedSport)
+
   const [error, setError] = useState('')
   const [ok, setOk] = useState(false)
+
+  const sports = [
+    'Watersports',
+    'Tennis',
+    'Football',
+    'Basketball',
+    'Swimming',
+    'Martial Arts',
+    'Fitness / Gym',
+    'Golf',
+    'Volleyball',
+    'Badminton',
+    'Athletics',
+    'Other',
+  ]
 
   const submit = async () => {
     setError('')
@@ -21,11 +44,13 @@ export default function Signup() {
       !name ||
       !email ||
       password.length < 6 ||
-      !club
+      !club ||
+      !sport
     ) {
       setError(
         'Please complete all fields. Password must be at least 6 characters.'
       )
+
       return
     }
 
@@ -63,6 +88,7 @@ export default function Signup() {
           city: '',
           slug,
           owner_id: data.user.id,
+          sport_type: sport,
         })
 
       if (r.error) {
@@ -101,10 +127,13 @@ export default function Signup() {
           For club owners
         </div>
 
-        <h1>Create your club</h1>
+        <h1>
+          Create your club
+        </h1>
 
         <p className="muted">
-          Start accepting online bookings with SportSlot.
+          Start accepting online bookings
+          with SportSlot.
         </p>
 
         {ok ? (
@@ -144,6 +173,27 @@ export default function Signup() {
                 setClub(e.target.value)
               }
             />
+
+            <select
+              className="input"
+              value={sport}
+              onChange={(e) =>
+                setSport(e.target.value)
+              }
+            >
+              <option value="">
+                Select your sport
+              </option>
+
+              {sports.map((item) => (
+                <option
+                  key={item}
+                  value={item}
+                >
+                  {item}
+                </option>
+              ))}
+            </select>
 
             <input
               className="input"
