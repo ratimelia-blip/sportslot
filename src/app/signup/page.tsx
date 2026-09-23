@@ -1,248 +1,346 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+'use client'
 
-export async function POST(request: Request) {
-  let createdUserId = ''
+import { Suspense, useState } from 'react'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
-  try {
-    const body = await request.json()
+const sports = [
+  'Watersports',
+  'Tennis',
+  'Football',
+  'Basketball',
+  'Swimming',
+  'Martial Arts',
+  'Fitness / Gym',
+  'Golf',
+  'Volleyball',
+  'Badminton',
+  'Athletics',
+  'Other',
+]
 
-    const email = String(body.email || '')
-      .trim()
-      .toLowerCase()
+function SignupForm() {
+  const searchParams = useSearchParams()
 
-    const password = String(body.password || '')
-    const name = String(body.name || '').trim()
-    const clubName = String(body.club || '').trim()
-    const sport = String(body.sport || '').trim()
-    const planId = String(body.planId || '').trim()
+  const selectedSport =
+    searchParams.get('sport') || ''
 
-    const billing =
-      body.billing === 'yearly'
-        ? 'yearly'
-        : 'monthly'
+  const selectedPlan =
+    searchParams.get('plan') || ''
 
-    // ----------------------------------------
-    // Validate signup data
-    // ----------------------------------------
+  const billing =
+    searchParams.get('billing') === 'yearly'
+      ? 'yearly'
+      : 'monthly'
+
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [club, setClub] = useState('')
+  const [sport, setSport] =
+    useState(selectedSport)
+
+  const [error, setError] = useState('')
+  const [ok, setOk] = useState(false)
+  const [submitting, setSubmitting] =
+    useState(false)
+
+  const submit = async () => {
+    setError('')
 
     if (
-      !email ||
-      !password ||
+      !name.trim() ||
+      !email.trim() ||
       password.length < 6 ||
-      !name ||
-      !clubName ||
-      !sport ||
-      !planId
+      !club.trim() ||
+      !sport
     ) {
-      return NextResponse.json(
-        {
-          error:
-            'Please complete all signup fields.',
-        },
-        { status: 400 }
+      setError(
+        'Please complete all fields. Password must be at least 6 characters.'
       )
+      return
     }
 
-    // ----------------------------------------
-    // Supabase configuration
-    // ----------------------------------------
-
-    const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL
-
-    const adminKey =
-      process.env.SUPABASE_ADMIN_KEY
-
-    if (!supabaseUrl || !adminKey) {
-      return NextResponse.json(
-        {
-          error:
-            'Server authentication is not configured.',
-        },
-        { status: 500 }
+    if (!selectedPlan) {
+      setError(
+        'Please choose a SportSlot plan before creating your club.'
       )
+      return
     }
 
-    const admin = createClient(
-      supabaseUrl,
-      adminKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-          detectSessionInUrl: false,
-        },
-      }
-    )
+    setSubmitting(true)
 
-    // ----------------------------------------
-    // 1. Create Auth user
-    // ----------------------------------------
-
-    const {
-      data: userData,
-      error: userError,
-    } =
-      await admin.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: name,
-          role: 'club_owner',
-        },
-      })
-
-    if (userError) {
-      return NextResponse.json(
+    try {
+      const response = await fetch(
+        '/api/signup',
         {
-          error: userError.message,
-        },
-        { status: 400 }
-      )
-    }
-
-    if (!userData.user) {
-      return NextResponse.json(
-        {
-          error:
-            'Unable to create your account.',
-        },
-        { status: 500 }
-      )
-    }
-
-    createdUserId = userData.user.id
-
-    // ----------------------------------------
-    // 2. Create club + subscription
-    //
-    // IMPORTANT:
-    // We use the database function here instead
-    // of .from('clubs').insert(...)
-    // ----------------------------------------
-
-    const {
-      data: setupData,
-      error: setupError,
-    } =
-      await admin.rpc(
-        'create_club_and_trial',
-        {
-          p_user_id: createdUserId,
-          p_club_name: clubName,
-          p_sport: sport,
-          p_plan_id: planId,
-          p_billing_interval: billing,
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+            password,
+            name: name.trim(),
+            club: club.trim(),
+            sport,
+            planId: selectedPlan,
+            billing,
+          }),
         }
       )
 
-    if (setupError) {
+      const result =
+        await response.json()
+
+      if (!response.ok) {
+        setError(
+          result.error ||
+            'Unable to create your club.'
+        )
+        setSubmitting(false)
+        return
+      }
+
+      setSubmitting(false)
+      setOk(true)
+    } catch (error) {
       console.error(
-        'Club setup error:',
-        setupError
+        'Signup error:',
+        error
       )
 
-      // --------------------------------------
-      // Remove the Auth user if club creation
-      // failed. This prevents unused accounts.
-      // --------------------------------------
-
-      try {
-        await admin.auth.admin.deleteUser(
-          createdUserId
-        )
-      } catch (deleteError) {
-        console.error(
-          'Could not clean up user:',
-          deleteError
-        )
-      }
-
-      return NextResponse.json(
-        {
-          error:
-            'We could not finish creating your club: ' +
-            setupError.message,
-        },
-        { status: 400 }
+      setError(
+        'Something went wrong. Please try again.'
       )
+
+      setSubmitting(false)
     }
-
-    // ----------------------------------------
-    // 3. Everything succeeded
-    // ----------------------------------------
-
-    return NextResponse.json({
-      success: true,
-      user_id: createdUserId,
-      club_id:
-        setupData?.club_id,
-      plan_id:
-        setupData?.plan_id,
-      billing:
-        setupData?.billing,
-      trial_ends_at:
-        setupData?.trial_ends_at,
-    })
-  } catch (error) {
-    console.error(
-      'Signup route error:',
-      error
-    )
-
-    // ----------------------------------------
-    // Cleanup if Auth user was created but
-    // something unexpected happened.
-    // ----------------------------------------
-
-    if (createdUserId) {
-      try {
-        const supabaseUrl =
-          process.env.NEXT_PUBLIC_SUPABASE_URL
-
-        const adminKey =
-          process.env.SUPABASE_ADMIN_KEY
-
-        if (
-          supabaseUrl &&
-          adminKey
-        ) {
-          const admin =
-            createClient(
-              supabaseUrl,
-              adminKey,
-              {
-                auth: {
-                  autoRefreshToken:
-                    false,
-                  persistSession:
-                    false,
-                  detectSessionInUrl:
-                    false,
-                },
-              }
-            )
-
-          await admin.auth.admin.deleteUser(
-            createdUserId
-          )
-        }
-      } catch (cleanupError) {
-        console.error(
-          'Cleanup error:',
-          cleanupError
-        )
-      }
-    }
-
-    return NextResponse.json(
-      {
-        error:
-          'Something went wrong while creating your club.',
-      },
-      { status: 500 }
-    )
   }
+
+  return (
+    <main>
+      <nav className="nav container">
+        <a
+          href="/"
+          className="brand"
+          style={{
+            textDecoration: 'none',
+            color: 'inherit',
+          }}
+        >
+          Sport<span>Slot</span>
+        </a>
+
+        <Link
+          className="btn"
+          href="/login"
+        >
+          Sign in
+        </Link>
+      </nav>
+
+      <section className="auth-card">
+        <div className="eyebrow">
+          For club owners
+        </div>
+
+        <h1>
+          Create your club
+        </h1>
+
+        <p className="muted">
+          Start your 14-day free trial
+          with SportSlot.
+        </p>
+
+        {selectedPlan ? (
+          <div
+            style={{
+              marginBottom: 25,
+              padding: 16,
+              borderRadius: 12,
+              background: '#f1f5f9',
+            }}
+          >
+            <div
+              className="muted"
+              style={{
+                fontSize: 13,
+                marginBottom: 4,
+              }}
+            >
+              Selected plan
+            </div>
+
+            <strong
+              style={{
+                color: '#0f172a',
+              }}
+            >
+              {billing === 'yearly'
+                ? 'Yearly subscription'
+                : 'Monthly subscription'}
+            </strong>
+
+            <div className="muted">
+              14-day free trial
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              marginBottom: 25,
+              padding: 16,
+              borderRadius: 12,
+              background: '#fff7ed',
+            }}
+          >
+            <div
+              style={{
+                marginBottom: 10,
+              }}
+            >
+              Please choose a SportSlot
+              plan first.
+            </div>
+
+            <Link
+              className="btn"
+              href="/pricing"
+            >
+              View plans
+            </Link>
+          </div>
+        )}
+
+        {ok ? (
+          <div className="success">
+            <h2>
+              Your club is ready ✓
+            </h2>
+
+            <p>
+              Your 14-day free trial
+              has started.
+            </p>
+
+            <p className="muted">
+              Your SportSlot account,
+              club, and trial have been
+              created successfully.
+            </p>
+
+            <Link
+              className="btn primary"
+              href="/login"
+            >
+              Go to login
+            </Link>
+          </div>
+        ) : (
+          <div className="form">
+            <input
+              className="input"
+              placeholder="Your name"
+              value={name}
+              onChange={(e) =>
+                setName(e.target.value)
+              }
+            />
+
+            <input
+              className="input"
+              placeholder="Club name"
+              value={club}
+              onChange={(e) =>
+                setClub(e.target.value)
+              }
+            />
+
+            <select
+              className="input"
+              value={sport}
+              onChange={(e) =>
+                setSport(e.target.value)
+              }
+            >
+              <option value="">
+                Select your sport
+              </option>
+
+              {sports.map((item) => (
+                <option
+                  key={item}
+                  value={item}
+                >
+                  {item}
+                </option>
+              ))}
+            </select>
+
+            <input
+              className="input"
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
+            />
+
+            <input
+              className="input"
+              placeholder="Password"
+              type="password"
+              value={password}
+              onChange={(e) =>
+                setPassword(e.target.value)
+              }
+            />
+
+            {error && (
+              <div className="error">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn primary"
+              onClick={submit}
+              disabled={
+                submitting ||
+                !selectedPlan
+              }
+            >
+              {submitting
+                ? 'Creating your club…'
+                : 'Start free trial'}
+            </button>
+          </div>
+        )}
+      </section>
+    </main>
+  )
+}
+
+/*
+ * IMPORTANT:
+ * This is the default export required by
+ * Next.js for /signup.
+ */
+export default function Signup() {
+  return (
+    <Suspense
+      fallback={
+        <main className="center">
+          Loading SportSlot…
+        </main>
+      }
+    >
+      <SignupForm />
+    </Suspense>
+  )
 }
