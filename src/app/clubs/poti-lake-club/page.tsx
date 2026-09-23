@@ -244,7 +244,6 @@ export default function PLC() {
 
     setDone(data?.id || 'confirmed')
 
-    // Refresh the booked slots immediately
     const { data: club } = await sb
       .from('clubs')
       .select('id')
@@ -263,9 +262,16 @@ export default function PLC() {
   return (
     <main>
       <nav className="nav container">
-        <div className="brand">
+        <a
+          href="/"
+          className="brand"
+          style={{
+            textDecoration: 'none',
+            color: 'inherit',
+          }}
+        >
           Sport<span>Slot</span>
-        </div>
+        </a>
 
         <div className="muted">
           Poti Lake Club
