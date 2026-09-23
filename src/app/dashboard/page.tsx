@@ -136,7 +136,6 @@ export default function Dashboard() {
       return
     }
 
-    // Create all five duration options
     await sb.from('service_options').insert(
       durations.map((d) => ({
         service_id: service.id,
@@ -243,6 +242,18 @@ export default function Dashboard() {
       </aside>
 
       <section className="main">
+
+        {/* BACK BUTTON */}
+        {tab !== 'overview' && (
+          <button
+            className="btn"
+            onClick={() => setTab('overview')}
+            style={{ marginBottom: 16 }}
+          >
+            ← Back to Overview
+          </button>
+        )}
+
         <div className="topline">
           <div>
             <div className="muted">{email}</div>
