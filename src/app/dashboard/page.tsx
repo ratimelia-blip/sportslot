@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabaseBrowser } from '../../lib/supabase'
 import Link from 'next/link'
+import SettingsPanel from './SettingsPanel'
 
 type Booking = {
   id: string
@@ -661,31 +662,15 @@ export default function Dashboard() {
           </div>
         )}
 
-        {tab === 'settings' && (
-          <div className="card section">
-            <h2>
-              Club settings
-            </h2>
-
-            <p>
-              <strong>
-                {club?.name}
-              </strong>
-            </p>
-
-            <p className="muted">
-              Slug: /clubs/
-              {club?.slug}
-            </p>
-
-            <p className="muted">
-              Opening hours, blocked
-              periods, branding and
-              staff management will
-              be added here.
-            </p>
-          </div>
+        {tab === 'settings' && club && (
+          <SettingsPanel
+            club={club}
+            onClubUpdated={(updatedClub) => {
+              setClub(updatedClub)
+            }}
+          />
         )}
+
       </section>
     </main>
   )
