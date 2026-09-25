@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { supabaseBrowser } from '../../lib/supabase'
+import Link from 'next/link'
+import SettingsPanel from './SettingsPanel'
 
 type Club = {
   id: string
