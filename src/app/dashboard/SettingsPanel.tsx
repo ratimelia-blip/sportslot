@@ -49,7 +49,7 @@ const dayNames = [
   'Saturday',
 ]
 
-const defaultOpeningHours: OpeningDay[] =
+const createDefaultOpeningHours = (): OpeningDay[] =>
   dayNames.map((_, weekday) => ({
     weekday,
     enabled: weekday !== 0,
@@ -66,154 +66,153 @@ export default function SettingsPanel({
 }) {
   const sb = supabaseBrowser()
 
-  const [section, setSection] =
-    useState('club')
+  const [section, setSection] = useState('club')
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
 
-  const [saving, setSaving] =
-    useState(false)
+  const [clubForm, setClubForm] = useState({
+    name: club.name || '',
+    short_name: club.short_name || '',
+    city: club.city || '',
+    address: club.address || '',
+    phone: club.phone || '',
+    contact_email: club.contact_email || '',
+    website: club.website || '',
+  })
 
-  const [message, setMessage] =
-    useState('')
-
-  const [clubForm, setClubForm] =
-    useState({
-      name: club.name || '',
-      short_name:
-        club.short_name || '',
-      city: club.city || '',
-      address:
-        club.address || '',
-      phone:
-        club.phone || '',
-      contact_email:
-        club.contact_email || '',
-      website:
-        club.website || '',
-    })
-
-  const [bookingForm, setBookingForm] =
-    useState({
-      booking_interval_minutes:
-        club.booking_interval_minutes ||
-        15,
-
-      advance_booking_days:
-        club.advance_booking_days ??
-        30,
-
-      same_day_booking:
-        club.same_day_booking ??
-        true,
-
-      cancellation_hours:
-        club.cancellation_hours ??
-        24,
-
-      allow_customer_cancellation:
-        club.allow_customer_cancellation ??
-        true,
-
-      auto_confirm_bookings:
-        club.auto_confirm_bookings ??
-        false,
-
-      buffer_minutes:
-        club.buffer_minutes ??
-        0,
-
-      timezone:
-        club.timezone ||
-        'Asia/Tbilisi',
-
-      currency:
-        club.currency ||
-        'GEL',
-    })
+  const [bookingForm, setBookingForm] = useState({
+    booking_interval_minutes:
+      club.booking_interval_minutes ?? 15,
+    advance_booking_days:
+      club.advance_booking_days ?? 30,
+    same_day_booking:
+      club.same_day_booking ?? true,
+    cancellation_hours:
+      club.cancellation_hours ?? 24,
+    allow_customer_cancellation:
+      club.allow_customer_cancellation ?? true,
+    auto_confirm_bookings:
+      club.auto_confirm_bookings ?? false,
+    buffer_minutes:
+      club.buffer_minutes ?? 0,
+    timezone:
+      club.timezone || 'Asia/Tbilisi',
+    currency:
+      club.currency || 'GEL',
+  })
 
   const [openingHours, setOpeningHours] =
     useState<OpeningDay[]>(
-      defaultOpeningHours
+      createDefaultOpeningHours()
     )
 
   const [blockedPeriods, setBlockedPeriods] =
     useState<BlockedPeriod[]>([])
 
-  const [newBlocked, setNewBlocked] =
-    useState({
-      starts_at: '',
-      ends_at: '',
-      reason: '',
-    })
-
-  async function loadSettings() {
-    const [
-      hoursResult,
-      blockedResult,
-    ] = await Promise.all([
-      sb
-        .from('availability_rules')
-        .select(
-          'weekday,start_time,end_time'
-        )
-        .eq('club_id', club.id)
-        .order('weekday'),
-
-      sb
-        .from('blocked_periods')
-        .select(
-          'id,starts_at,ends_at,reason'
-        )
-        .eq('club_id', club.id)
-        .order('starts_at'),
-    ])
-
-    if (hoursResult.data?.length) {
-      setOpeningHours(
-        defaultOpeningHours.map(
-          (day) => {
-            const rule =
-              hoursResult.data.find(
-                (r) =>
-                  Number(r.weekday) ===
-                  day.weekday
-              )
-
-            if (!rule) {
-              return day
-            }
-
-            return {
-              ...day,
-              enabled: true,
-              start_time:
-                String(
-                  rule.start_time
-                ).slice(0, 5),
-              end_time:
-                String(
-                  rule.end_time
-                ).slice(0, 5),
-            }
-          }
-        )
-      )
-    } else {
-      setOpeningHours(
-        defaultOpeningHours
-      )
-    }
-
-    setBlockedPeriods(
-      (blockedResult.data ||
-        []) as BlockedPeriod[]
-    )
-  }
+  const [newBlocked, setNewBlocked] = useState({
+    starts_at: '',
+    ends_at: '',
+    reason: '',
+  })
 
   useEffect(() => {
+    setClubForm({
+      name: club.name || '',
+      short_name: club.short_name || '',
+      city: club.city || '',
+      address: club.address || '',
+      phone: club.phone || '',
+      contact_email: club.contact_email || '',
+      website: club.website || '',
+    })
+
+    setBookingForm({
+      booking_interval_minutes:
+        club.booking_interval_minutes ?? 15,
+      advance_booking_days:
+        club.advance_booking_days ?? 30,
+      same_day_booking:
+        club.same_day_booking ?? true,
+      cancellation_hours:
+        club.cancellation_hours ?? 24,
+      allow_customer_cancellation:
+        club.allow_customer_cancellation ?? true,
+      auto_confirm_bookings:
+        club.auto_confirm_bookings ?? false,
+      buffer_minutes:
+        club.buffer_minutes ?? 0,
+      timezone:
+        club.timezone || 'Asia/Tbilisi',
+      currency:
+        club.currency || 'GEL',
+    })
+
     loadSettings()
   }, [club.id])
 
-  const saveClub = async () => {
+  async function loadSettings() {
+    const [hoursResult, blockedResult] =
+      await Promise.all([
+        sb
+          .from('availability_rules')
+          .select(
+            'weekday,start_time,end_time,active'
+          )
+          .eq('club_id', club.id)
+          .order('weekday'),
+
+        sb
+          .from('blocked_periods')
+          .select(
+            'id,starts_at,ends_at,reason'
+          )
+          .eq('club_id', club.id)
+          .order('starts_at'),
+      ])
+
+    const defaultHours =
+      createDefaultOpeningHours()
+
+    if (hoursResult.data) {
+      const updatedHours =
+        defaultHours.map((day) => {
+          const rule =
+            hoursResult.data.find(
+              (item) =>
+                Number(item.weekday) ===
+                day.weekday
+            )
+
+          if (!rule) {
+            return day
+          }
+
+          return {
+            ...day,
+            enabled:
+              rule.active !== false,
+            start_time:
+              String(
+                rule.start_time
+              ).slice(0, 5),
+            end_time:
+              String(
+                rule.end_time
+              ).slice(0, 5),
+          }
+        })
+
+      setOpeningHours(updatedHours)
+    } else {
+      setOpeningHours(defaultHours)
+    }
+
+    setBlockedPeriods(
+      (blockedResult.data || []) as BlockedPeriod[]
+    )
+  }
+
+  async function saveClub() {
     if (!clubForm.name.trim()) {
       setMessage(
         'Club name is required.'
@@ -228,24 +227,16 @@ export default function SettingsPanel({
       await sb
         .from('clubs')
         .update({
-          name:
-            clubForm.name.trim(),
-
+          name: clubForm.name.trim(),
           short_name:
             clubForm.short_name.trim(),
-
-          city:
-            clubForm.city.trim(),
-
+          city: clubForm.city.trim(),
           address:
             clubForm.address.trim(),
-
           phone:
             clubForm.phone.trim(),
-
           contact_email:
             clubForm.contact_email.trim(),
-
           website:
             clubForm.website.trim(),
         })
@@ -260,259 +251,241 @@ export default function SettingsPanel({
       return
     }
 
-    onClubUpdated(
-      data as Club
-    )
+    onClubUpdated(data as Club)
 
     setMessage(
       'Club information saved.'
     )
   }
 
-  const saveBookingSettings =
-    async () => {
-      setSaving(true)
-      setMessage('')
+  async function saveBookingSettings() {
+    setSaving(true)
+    setMessage('')
 
-      const { data, error } =
-        await sb
-          .from('clubs')
-          .update({
-            booking_interval_minutes:
-              bookingForm.booking_interval_minutes,
+    const { data, error } =
+      await sb
+        .from('clubs')
+        .update({
+          booking_interval_minutes:
+            bookingForm.booking_interval_minutes,
+          advance_booking_days:
+            bookingForm.advance_booking_days,
+          same_day_booking:
+            bookingForm.same_day_booking,
+          cancellation_hours:
+            bookingForm.cancellation_hours,
+          allow_customer_cancellation:
+            bookingForm.allow_customer_cancellation,
+          auto_confirm_bookings:
+            bookingForm.auto_confirm_bookings,
+          buffer_minutes:
+            bookingForm.buffer_minutes,
+          timezone:
+            bookingForm.timezone,
+          currency:
+            bookingForm.currency,
+        })
+        .eq('id', club.id)
+        .select('*')
+        .single()
 
-            advance_booking_days:
-              bookingForm.advance_booking_days,
+    setSaving(false)
 
-            same_day_booking:
-              bookingForm.same_day_booking,
-
-            cancellation_hours:
-              bookingForm.cancellation_hours,
-
-            allow_customer_cancellation:
-              bookingForm.allow_customer_cancellation,
-
-            auto_confirm_bookings:
-              bookingForm.auto_confirm_bookings,
-
-            buffer_minutes:
-              bookingForm.buffer_minutes,
-
-            timezone:
-              bookingForm.timezone,
-
-            currency:
-              bookingForm.currency,
-          })
-          .eq('id', club.id)
-          .select('*')
-          .single()
-
-      setSaving(false)
-
-      if (error) {
-        setMessage(error.message)
-        return
-      }
-
-      onClubUpdated(
-        data as Club
-      )
-
-      setMessage(
-        'Booking settings saved.'
-      )
+    if (error) {
+      setMessage(error.message)
+      return
     }
 
-  const saveOpeningHours =
-    async () => {
-      setSaving(true)
-      setMessage('')
+    onClubUpdated(data as Club)
 
-      const {
-        error: deleteError,
-      } = await sb
+    setMessage(
+      'Booking settings saved.'
+    )
+  }
+
+  async function saveOpeningHours() {
+    setSaving(true)
+    setMessage('')
+
+    const { error: deleteError } =
+      await sb
         .from('availability_rules')
         .delete()
         .eq('club_id', club.id)
 
-      if (deleteError) {
+    if (deleteError) {
+      setSaving(false)
+      setMessage(deleteError.message)
+      return
+    }
+
+    const rows = openingHours
+      .filter((day) => day.enabled)
+      .map((day) => ({
+        club_id: club.id,
+        weekday: day.weekday,
+        start_time:
+          day.start_time + ':00',
+        end_time:
+          day.end_time + ':00',
+        active: true,
+      }))
+
+    if (rows.length > 0) {
+      const { error } =
+        await sb
+          .from('availability_rules')
+          .insert(rows)
+
+      if (error) {
         setSaving(false)
-        setMessage(
-          deleteError.message
-        )
-        return
-      }
-
-      const rows =
-        openingHours
-          .filter(
-            (day) => day.enabled
-          )
-          .map((day) => ({
-            club_id: club.id,
-            weekday: day.weekday,
-            start_time:
-              day.start_time +
-              ':00',
-            end_time:
-              day.end_time +
-              ':00',
-            active: true,
-          }))
-
-      if (rows.length) {
-        const { error } =
-          await sb
-            .from(
-              'availability_rules'
-            )
-            .insert(rows)
-
-        if (error) {
-          setSaving(false)
-          setMessage(
-            error.message
-          )
-          return
-        }
-      }
-
-      setSaving(false)
-
-      setMessage(
-        'Opening hours saved.'
-      )
-
-      await loadSettings()
-    }
-
-  const addBlockedPeriod =
-    async () => {
-      if (
-        !newBlocked.starts_at ||
-        !newBlocked.ends_at
-      ) {
-        setMessage(
-          'Please enter both start and end times.'
-        )
-        return
-      }
-
-      const start =
-        new Date(
-          newBlocked.starts_at
-        )
-
-      const end =
-        new Date(
-          newBlocked.ends_at
-        )
-
-      if (end <= start) {
-        setMessage(
-          'End time must be after start time.'
-        )
-        return
-      }
-
-      setSaving(true)
-      setMessage('')
-
-      const { error } =
-        await sb
-          .from('blocked_periods')
-          .insert({
-            club_id: club.id,
-            starts_at:
-              start.toISOString(),
-            ends_at:
-              end.toISOString(),
-            reason:
-              newBlocked.reason.trim() ||
-              null,
-          })
-
-      setSaving(false)
-
-      if (error) {
         setMessage(error.message)
         return
       }
+    }
 
-      setNewBlocked({
-        starts_at: '',
-        ends_at: '',
-        reason: '',
-      })
+    setSaving(false)
+    setMessage(
+      'Opening hours saved.'
+    )
 
+    await loadSettings()
+  }
+
+  async function addBlockedPeriod() {
+    if (
+      !newBlocked.starts_at ||
+      !newBlocked.ends_at
+    ) {
       setMessage(
-        'Blocked period added.'
+        'Please enter both start and end times.'
+      )
+      return
+    }
+
+    const start = new Date(
+      newBlocked.starts_at
+    )
+
+    const end = new Date(
+      newBlocked.ends_at
+    )
+
+    if (end <= start) {
+      setMessage(
+        'End time must be after start time.'
+      )
+      return
+    }
+
+    setSaving(true)
+    setMessage('')
+
+    const { error } =
+      await sb
+        .from('blocked_periods')
+        .insert({
+          club_id: club.id,
+          starts_at:
+            start.toISOString(),
+          ends_at:
+            end.toISOString(),
+          reason:
+            newBlocked.reason.trim() ||
+            null,
+        })
+
+    setSaving(false)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    setNewBlocked({
+      starts_at: '',
+      ends_at: '',
+      reason: '',
+    })
+
+    setMessage(
+      'Blocked period added.'
+    )
+
+    await loadSettings()
+  }
+
+  async function deleteBlockedPeriod(
+    id: string
+  ) {
+    const confirmed =
+      window.confirm(
+        'Remove this blocked period?'
       )
 
-      await loadSettings()
+    if (!confirmed) {
+      return
     }
 
-  const deleteBlockedPeriod =
-    async (id: string) => {
-      const confirmed =
-        window.confirm(
-          'Remove this blocked period?'
-        )
+    const { error } =
+      await sb
+        .from('blocked_periods')
+        .delete()
+        .eq('id', id)
 
-      if (!confirmed) {
-        return
-      }
-
-      const { error } =
-        await sb
-          .from(
-            'blocked_periods'
-          )
-          .delete()
-          .eq('id', id)
-
-      if (error) {
-        setMessage(error.message)
-        return
-      }
-
-      await loadSettings()
+    if (error) {
+      setMessage(error.message)
+      return
     }
+
+    setMessage(
+      'Blocked period removed.'
+    )
+
+    await loadSettings()
+  }
+
+  function updateOpeningDay(
+    weekday: number,
+    changes: Partial<OpeningDay>
+  ) {
+    setOpeningHours((current) =>
+      current.map((day) =>
+        day.weekday === weekday
+          ? {
+              ...day,
+              ...changes,
+            }
+          : day
+      )
+    )
+  }
 
   const sections = [
     {
       id: 'club',
-      title:
-        'Club Information',
+      title: 'Club Information',
       description:
         'Name, location and contact details',
       icon: '🏢',
     },
-
     {
       id: 'booking',
-      title:
-        'Booking Settings',
+      title: 'Booking Settings',
       description:
         'Booking rules and confirmations',
       icon: '📅',
     },
-
     {
       id: 'hours',
-      title:
-        'Opening Hours',
+      title: 'Opening Hours',
       description:
         'When customers can book',
       icon: '🕐',
     },
-
     {
       id: 'blocked',
-      title:
-        'Blocked Periods',
+      title: 'Blocked Periods',
       description:
         'Holidays and closures',
       icon: '🚫',
@@ -542,99 +515,79 @@ export default function SettingsPanel({
           alignItems: 'start',
         }}
       >
-        {/* SETTINGS MENU */}
-
         <div
           style={{
             display: 'grid',
             gap: 10,
           }}
         >
-          {sections.map(
-            (item) => (
-              <button
-                key={item.id}
-                className="btn"
-                onClick={() =>
-                  setSection(
-                    item.id
-                  )
-                }
+          {sections.map((item) => (
+            <button
+              key={item.id}
+              className="btn"
+              onClick={() =>
+                setSection(item.id)
+              }
+              style={{
+                textAlign: 'left',
+                padding: 16,
+                borderColor:
+                  section === item.id
+                    ? '#2dd4bf'
+                    : undefined,
+                background:
+                  section === item.id
+                    ? '#102c3d'
+                    : undefined,
+              }}
+            >
+              <div
                 style={{
-                  textAlign: 'left',
-                  padding: 16,
-                  borderColor:
-                    section ===
-                    item.id
-                      ? '#2dd4bf'
-                      : undefined,
-                  background:
-                    section ===
-                    item.id
-                      ? '#102c3d'
-                      : undefined,
+                  fontSize: 17,
+                  marginBottom: 5,
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 17,
-                    marginBottom: 5,
-                  }}
-                >
-                  {item.icon}{' '}
-                  {item.title}
-                </div>
+                {item.icon} {item.title}
+              </div>
 
-                <div
-                  className="muted"
-                  style={{
-                    fontSize: 13,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {
-                    item.description
-                  }
-                </div>
-              </button>
-            )
-          )}
+              <div
+                className="muted"
+                style={{
+                  fontSize: 13,
+                  lineHeight: 1.4,
+                }}
+              >
+                {item.description}
+              </div>
+            </button>
+          ))}
 
           <a
             className="btn"
-            href={
-              '/clubs/' +
-              club.slug
-            }
+            href={`/clubs/${club.slug}`}
             target="_blank"
             rel="noreferrer"
             style={{
               marginTop: 8,
-              textAlign:
-                'center',
+              textAlign: 'center',
             }}
           >
             🌐 Open public page
           </a>
         </div>
 
-        {/* CONTENT */}
-
         <div className="card">
 
-          {/* CLUB INFORMATION */}
-
-          {section ===
-            'club' && (
+          {section === 'club' && (
             <>
               <h2>
                 Club Information
               </h2>
 
               <p className="muted">
-                This information
-                will be shown to
-                your customers.
+                This information will
+                be shown to your
+                customers.
               </p>
 
               <div
@@ -648,16 +601,12 @@ export default function SettingsPanel({
               >
                 <Field
                   label="Club name"
-                  value={
-                    clubForm.name
-                  }
+                  value={clubForm.name}
                   onChange={(value) =>
-                    setClubForm(
-                      (c) => ({
-                        ...c,
-                        name: value,
-                      })
-                    )
+                    setClubForm((c) => ({
+                      ...c,
+                      name: value,
+                    }))
                   }
                 />
 
@@ -667,28 +616,22 @@ export default function SettingsPanel({
                     clubForm.short_name
                   }
                   onChange={(value) =>
-                    setClubForm(
-                      (c) => ({
-                        ...c,
-                        short_name:
-                          value,
-                      })
-                    )
+                    setClubForm((c) => ({
+                      ...c,
+                      short_name:
+                        value,
+                    }))
                   }
                 />
 
                 <Field
                   label="City"
-                  value={
-                    clubForm.city
-                  }
+                  value={clubForm.city}
                   onChange={(value) =>
-                    setClubForm(
-                      (c) => ({
-                        ...c,
-                        city: value,
-                      })
-                    )
+                    setClubForm((c) => ({
+                      ...c,
+                      city: value,
+                    }))
                   }
                 />
 
@@ -698,45 +641,36 @@ export default function SettingsPanel({
                     clubForm.address
                   }
                   onChange={(value) =>
-                    setClubForm(
-                      (c) => ({
-                        ...c,
-                        address:
-                          value,
-                      })
-                    )
+                    setClubForm((c) => ({
+                      ...c,
+                      address: value,
+                    }))
                   }
                 />
 
                 <Field
                   label="Phone"
-                  value={
-                    clubForm.phone
-                  }
+                  value={clubForm.phone}
                   onChange={(value) =>
-                    setClubForm(
-                      (c) => ({
-                        ...c,
-                        phone: value,
-                      })
-                    )
+                    setClubForm((c) => ({
+                      ...c,
+                      phone: value,
+                    }))
                   }
                 />
 
                 <Field
                   label="Contact email"
+                  type="email"
                   value={
                     clubForm.contact_email
                   }
-                  type="email"
                   onChange={(value) =>
-                    setClubForm(
-                      (c) => ({
-                        ...c,
-                        contact_email:
-                          value,
-                      })
-                    )
+                    setClubForm((c) => ({
+                      ...c,
+                      contact_email:
+                        value,
+                    }))
                   }
                 />
 
@@ -751,7 +685,7 @@ export default function SettingsPanel({
                     value={
                       clubForm.website
                     }
-                    placeholder="https://..."
+                    placeholder="https://example.com"
                     onChange={(value) =>
                       setClubForm(
                         (c) => ({
@@ -769,6 +703,7 @@ export default function SettingsPanel({
                 className="muted"
                 style={{
                   marginTop: 20,
+                  lineHeight: 1.7,
                 }}
               >
                 Sport:{' '}
@@ -782,9 +717,7 @@ export default function SettingsPanel({
 
               <button
                 className="btn primary"
-                onClick={
-                  saveClub
-                }
+                onClick={saveClub}
                 disabled={saving}
                 style={{
                   marginTop: 20,
@@ -797,19 +730,15 @@ export default function SettingsPanel({
             </>
           )}
 
-          {/* BOOKING SETTINGS */}
-
-          {section ===
-            'booking' && (
+          {section === 'booking' && (
             <>
               <h2>
                 Booking Settings
               </h2>
 
               <p className="muted">
-                Control how
-                customers can
-                book your club.
+                Control how customers
+                can book your club.
               </p>
 
               <div
@@ -837,8 +766,7 @@ export default function SettingsPanel({
                           ...c,
                           booking_interval_minutes:
                             Number(
-                              e
-                                .target
+                              e.target
                                 .value
                             ),
                         })
@@ -848,11 +776,9 @@ export default function SettingsPanel({
                     <option value={15}>
                       15 minutes
                     </option>
-
                     <option value={30}>
                       30 minutes
                     </option>
-
                     <option value={60}>
                       1 hour
                     </option>
@@ -877,8 +803,7 @@ export default function SettingsPanel({
                           ...c,
                           advance_booking_days:
                             Number(
-                              e
-                                .target
+                              e.target
                                 .value
                             ),
                         })
@@ -887,13 +812,13 @@ export default function SettingsPanel({
                   />
 
                   <small className="muted">
-                    days ahead
+                    days in advance
                   </small>
                 </label>
 
                 <label>
                   <span>
-                    Cancellation deadline
+                    Cancellation window
                   </span>
 
                   <input
@@ -909,8 +834,7 @@ export default function SettingsPanel({
                           ...c,
                           cancellation_hours:
                             Number(
-                              e
-                                .target
+                              e.target
                                 .value
                             ),
                         })
@@ -919,8 +843,7 @@ export default function SettingsPanel({
                   />
 
                   <small className="muted">
-                    hours before
-                    booking
+                    hours before booking
                   </small>
                 </label>
 
@@ -940,8 +863,7 @@ export default function SettingsPanel({
                           ...c,
                           buffer_minutes:
                             Number(
-                              e
-                                .target
+                              e.target
                                 .value
                             ),
                         })
@@ -951,15 +873,12 @@ export default function SettingsPanel({
                     <option value={0}>
                       No buffer
                     </option>
-
                     <option value={15}>
                       15 minutes
                     </option>
-
                     <option value={30}>
                       30 minutes
                     </option>
-
                     <option value={60}>
                       1 hour
                     </option>
@@ -981,37 +900,28 @@ export default function SettingsPanel({
                         (c) => ({
                           ...c,
                           timezone:
-                            e
-                              .target
+                            e.target
                               .value,
                         })
                       )
                     }
                   >
                     <option value="Asia/Tbilisi">
-                      Georgia —
-                      Tbilisi
+                      Georgia — Tbilisi
                     </option>
-
                     <option value="Europe/London">
-                      United Kingdom
-                      — London
+                      United Kingdom —
+                      London
                     </option>
-
                     <option value="Europe/Berlin">
-                      Germany —
-                      Berlin
+                      Germany — Berlin
                     </option>
-
                     <option value="Europe/Paris">
-                      France —
-                      Paris
+                      France — Paris
                     </option>
-
                     <option value="America/New_York">
                       USA — New York
                     </option>
-
                     <option value="America/Los_Angeles">
                       USA — Los Angeles
                     </option>
@@ -1033,22 +943,18 @@ export default function SettingsPanel({
                         (c) => ({
                           ...c,
                           currency:
-                            e
-                              .target
+                            e.target
                               .value,
                         })
                       )
                     }
                   >
                     <option value="GEL">
-                      GEL — Georgian
-                      Lari
+                      GEL — Georgian Lari
                     </option>
-
                     <option value="USD">
                       USD — US Dollar
                     </option>
-
                     <option value="EUR">
                       EUR — Euro
                     </option>
@@ -1129,20 +1035,16 @@ export default function SettingsPanel({
             </>
           )}
 
-          {/* OPENING HOURS */}
-
-          {section ===
-            'hours' && (
+          {section === 'hours' && (
             <>
               <h2>
                 Opening Hours
               </h2>
 
               <p className="muted">
-                Customers will
-                only be able to
-                book during these
-                hours.
+                Customers will only
+                be able to book during
+                these hours.
               </p>
 
               <div
@@ -1159,10 +1061,9 @@ export default function SettingsPanel({
                         day.weekday
                       }
                       style={{
-                        display:
-                          'grid',
+                        display: 'grid',
                         gridTemplateColumns:
-                          '120px 50px 1fr 1fr',
+                          '120px 40px 1fr 1fr',
                         gap: 10,
                         alignItems:
                           'center',
@@ -1181,28 +1082,14 @@ export default function SettingsPanel({
                         checked={
                           day.enabled
                         }
-                        onChange={(
-                          e
-                        ) =>
-                          setOpeningHours(
-                            (
-                              current
-                            ) =>
-                              current.map(
-                                (
-                                  d
-                                ) =>
-                                  d.weekday ===
-                                  day.weekday
-                                    ? {
-                                        ...d,
-                                        enabled:
-                                          e
-                                            .target
-                                            .checked,
-                                      }
-                                    : d
-                              )
+                        onChange={(e) =>
+                          updateOpeningDay(
+                            day.weekday,
+                            {
+                              enabled:
+                                e.target
+                                  .checked,
+                            }
                           )
                         }
                       />
@@ -1216,28 +1103,14 @@ export default function SettingsPanel({
                         value={
                           day.start_time
                         }
-                        onChange={(
-                          e
-                        ) =>
-                          setOpeningHours(
-                            (
-                              current
-                            ) =>
-                              current.map(
-                                (
-                                  d
-                                ) =>
-                                  d.weekday ===
-                                  day.weekday
-                                    ? {
-                                        ...d,
-                                        start_time:
-                                          e
-                                            .target
-                                            .value,
-                                      }
-                                    : d
-                              )
+                        onChange={(e) =>
+                          updateOpeningDay(
+                            day.weekday,
+                            {
+                              start_time:
+                                e.target
+                                  .value,
+                            }
                           )
                         }
                       />
@@ -1251,28 +1124,14 @@ export default function SettingsPanel({
                         value={
                           day.end_time
                         }
-                        onChange={(
-                          e
-                        ) =>
-                          setOpeningHours(
-                            (
-                              current
-                            ) =>
-                              current.map(
-                                (
-                                  d
-                                ) =>
-                                  d.weekday ===
-                                  day.weekday
-                                    ? {
-                                        ...d,
-                                        end_time:
-                                          e
-                                            .target
-                                            .value,
-                                      }
-                                    : d
-                              )
+                        onChange={(e) =>
+                          updateOpeningDay(
+                            day.weekday,
+                            {
+                              end_time:
+                                e.target
+                                  .value,
+                            }
                           )
                         }
                       />
@@ -1298,22 +1157,17 @@ export default function SettingsPanel({
             </>
           )}
 
-          {/* BLOCKED PERIODS */}
-
-          {section ===
-            'blocked' && (
+          {section === 'blocked' && (
             <>
               <h2>
                 Blocked Periods
               </h2>
 
               <p className="muted">
-                Temporarily close
-                your club for
-                tournaments,
-                maintenance,
-                holidays or
-                other events.
+                Temporarily close your
+                club for tournaments,
+                maintenance, holidays
+                or other events.
               </p>
 
               <div
@@ -1341,8 +1195,7 @@ export default function SettingsPanel({
                         (c) => ({
                           ...c,
                           starts_at:
-                            e
-                              .target
+                            e.target
                               .value,
                         })
                       )
@@ -1366,8 +1219,7 @@ export default function SettingsPanel({
                         (c) => ({
                           ...c,
                           ends_at:
-                            e
-                              .target
+                            e.target
                               .value,
                         })
                       )
@@ -1396,8 +1248,7 @@ export default function SettingsPanel({
                         (c) => ({
                           ...c,
                           reason:
-                            e
-                              .target
+                            e.target
                               .value,
                         })
                       )
@@ -1431,16 +1282,13 @@ export default function SettingsPanel({
                 {blockedPeriods.length ===
                 0 ? (
                   <div className="muted">
-                    No blocked
-                    periods.
+                    No blocked periods.
                   </div>
                 ) : (
                   blockedPeriods.map(
                     (period) => (
                       <div
-                        key={
-                          period.id
-                        }
+                        key={period.id}
                         className="card"
                         style={{
                           padding: 16,
@@ -1452,9 +1300,9 @@ export default function SettingsPanel({
                               'flex',
                             justifyContent:
                               'space-between',
-                            gap: 16,
                             alignItems:
                               'center',
+                            gap: 16,
                           }}
                         >
                           <div>
@@ -1466,9 +1314,8 @@ export default function SettingsPanel({
                             <div className="muted">
                               {formatDate(
                                 period.starts_at
-                              )}{' '}
-                              →
-                              {' '}
+                              )}
+                              {' → '}
                               {formatDate(
                                 period.ends_at
                               )}
@@ -1522,9 +1369,7 @@ function Field({
         className="input"
         type={type}
         value={value}
-        placeholder={
-          placeholder
-        }
+        placeholder={placeholder}
         onChange={(e) =>
           onChange(
             e.target.value
