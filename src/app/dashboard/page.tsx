@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabaseBrowser } from '../../lib/supabase'
 import Link from 'next/link'
-import SettingsPanel from './SettingsPanel'
+import ClubSettings from './SettingsPanel'
 
 type Booking = {
   id: string
@@ -38,31 +38,31 @@ const durations = [
   { value: 300, label: '5 hours' },
 ]
 
-function durationLabel(minutes: number) {
-  return (
-    durations.find((d) => d.value === minutes)?.label ||
-    `${minutes} minutes`
-  )
-}
-
 export default function Dashboard() {
   const sb = supabaseBrowser()
 
   const [email, setEmail] = useState('')
   const [club, setClub] = useState<any>(null)
-  const [bookings, setBookings] = useState<Booking[]>([])
-  const [services, setServices] = useState<Service[]>([])
-  const [options, setOptions] = useState<ServiceOption[]>([])
-  const [tab, setTab] = useState('overview')
-  const [loading, setLoading] = useState(true)
+  const [bookings, setBookings] =
+    useState<Booking[]>([])
+  const [services, setServices] =
+    useState<Service[]>([])
+  const [options, setOptions] =
+    useState<ServiceOption[]>([])
+  const [tab, setTab] =
+    useState('overview')
+  const [loading, setLoading] =
+    useState(true)
 
-  const [newName, setNewName] = useState('')
+  const [newName, setNewName] =
+    useState('')
 
   const [editingService, setEditingService] =
     useState<string | null>(null)
 
   async function load() {
-    const { data } = await sb.auth.getUser()
+    const { data } =
+      await sb.auth.getUser()
 
     if (!data.user) {
       location.href = '/login'
@@ -74,44 +74,72 @@ export default function Dashboard() {
     const c = await sb
       .from('clubs')
       .select('*')
-      .eq('owner_id', data.user.id)
+      .eq(
+        'owner_id',
+        data.user.id
+      )
       .maybeSingle()
 
     if (c.data) {
       setClub(c.data)
 
-      const [b, s, o] = await Promise.all([
-        sb
-          .from('bookings')
-          .select(
-            'id,customer_name,starts_at,ends_at,price,status,services(name)'
-          )
-          .eq('club_id', c.data.id)
-          .order('starts_at', {
-            ascending: true,
-          })
-          .limit(100),
+      const [b, s, o] =
+        await Promise.all([
+          sb
+            .from('bookings')
+            .select(
+              'id,customer_name,starts_at,ends_at,price,status,services(name)'
+            )
+            .eq(
+              'club_id',
+              c.data.id
+            )
+            .order(
+              'starts_at',
+              {
+                ascending: true,
+              }
+            )
+            .limit(100),
 
-        sb
-          .from('services')
-          .select(
-            'id,name,description,active'
-          )
-          .eq('club_id', c.data.id)
-          .order('name'),
+          sb
+            .from('services')
+            .select(
+              'id,name,description,active'
+            )
+            .eq(
+              'club_id',
+              c.data.id
+            )
+            .order('name'),
 
-        sb
-          .from('service_options')
-          .select(
-            'id,service_id,duration_minutes,price,active'
-          )
-          .eq('active', true)
-          .order('duration_minutes'),
-      ])
+          sb
+            .from(
+              'service_options'
+            )
+            .select(
+              'id,service_id,duration_minutes,price,active'
+            )
+            .eq(
+              'active',
+              true
+            )
+            .order(
+              'duration_minutes'
+            ),
+        ])
 
-      setBookings((b.data || []) as any)
-      setServices(s.data || [])
-      setOptions(o.data || [])
+      setBookings(
+        (b.data || []) as any
+      )
+
+      setServices(
+        s.data || []
+      )
+
+      setOptions(
+        o.data || []
+      )
     }
 
     setLoading(false)
@@ -121,11 +149,19 @@ export default function Dashboard() {
     load()
   }, [])
 
-  const addService = async () => {
-    if (!club || !newName.trim()) return
+  const addService =
+    async () => {
+      if (
+        !club ||
+        !newName.trim()
+      ) {
+        return
+      }
 
-    const { data: service, error } =
-      await sb
+      const {
+        data: service,
+        error,
+      } = await sb
         .from('services')
         .insert({
           club_id: club.id,
@@ -137,126 +173,175 @@ export default function Dashboard() {
         .select()
         .single()
 
-    if (error || !service) {
-      alert(
-        error?.message ||
-          'Could not create service'
+      if (
+        error ||
+        !service
+      ) {
+        alert(
+          error?.message ||
+            'Could not create service'
+        )
+        return
+      }
+
+      await sb
+        .from(
+          'service_options'
+        )
+        .insert(
+          durations.map(
+            (d) => ({
+              service_id:
+                service.id,
+              duration_minutes:
+                d.value,
+              price: 0,
+              active: true,
+            })
+          )
+        )
+
+      setNewName('')
+      await load()
+    }
+
+  const updateOption =
+    async (
+      optionId: string,
+      price: string
+    ) => {
+      const value =
+        Number(price)
+
+      if (
+        Number.isNaN(
+          value
+        ) ||
+        value < 0
+      ) {
+        return
+      }
+
+      await sb
+        .from(
+          'service_options'
+        )
+        .update({
+          price: value,
+        })
+        .eq(
+          'id',
+          optionId
+        )
+
+      setOptions(
+        (current) =>
+          current.map(
+            (o) =>
+              o.id === optionId
+                ? {
+                    ...o,
+                    price: value,
+                  }
+                : o
+          )
       )
-      return
     }
 
-    await sb
-      .from('service_options')
-      .insert(
-        durations.map((d) => ({
-          service_id: service.id,
-          duration_minutes: d.value,
-          price: 0,
-          active: true,
-        }))
-      )
+  const toggleService =
+    async (
+      service: Service
+    ) => {
+      await sb
+        .from('services')
+        .update({
+          active:
+            !service.active,
+        })
+        .eq(
+          'id',
+          service.id
+        )
 
-    setNewName('')
-    await load()
-  }
-
-  const updateOption = async (
-    optionId: string,
-    price: string
-  ) => {
-    const value = Number(price)
-
-    if (
-      Number.isNaN(value) ||
-      value < 0
-    ) {
-      return
+      await load()
     }
 
-    await sb
-      .from('service_options')
-      .update({
-        price: value,
-      })
-      .eq('id', optionId)
-
-    setOptions((current) =>
-      current.map((o) =>
-        o.id === optionId
-          ? {
-              ...o,
-              price: value,
-            }
-          : o
-      )
-    )
-  }
-
-  const toggleService = async (
-    service: Service
-  ) => {
-    await sb
-      .from('services')
-      .update({
-        active: !service.active,
-      })
-      .eq('id', service.id)
-
-    await load()
-  }
-
-  const signout = async () => {
-    await sb.auth.signOut()
-    location.href = '/login'
-  }
-
-  const confirmBooking = async (
-    bookingId: string
-  ) => {
-    const confirmed = window.confirm(
-      'Confirm this booking?'
-    )
-
-    if (!confirmed) return
-
-    const { error } = await sb
-      .from('bookings')
-      .update({
-        status: 'confirmed',
-      })
-      .eq('id', bookingId)
-
-    if (error) {
-      alert(error.message)
-      return
+  const signout =
+    async () => {
+      await sb.auth.signOut()
+      location.href =
+        '/login'
     }
 
-    await load()
-  }
+  const confirmBooking =
+    async (
+      bookingId: string
+    ) => {
+      const confirmed =
+        window.confirm(
+          'Confirm this booking?'
+        )
 
-  const rejectBooking = async (
-    bookingId: string
-  ) => {
-    const confirmed = window.confirm(
-      'Are you sure you want to reject this booking?'
-    )
+      if (!confirmed) {
+        return
+      }
 
-    if (!confirmed) return
+      const { error } =
+        await sb
+          .from('bookings')
+          .update({
+            status:
+              'confirmed',
+          })
+          .eq(
+            'id',
+            bookingId
+          )
 
-    const { error } = await sb
-      .from('bookings')
-      .update({
-        status: 'cancelled',
-      })
-      .eq('id', bookingId)
+      if (error) {
+        alert(
+          error.message
+        )
+        return
+      }
 
-    if (error) {
-      alert(error.message)
-      return
+      await load()
     }
 
-    await load()
-  }
+  const rejectBooking =
+    async (
+      bookingId: string
+    ) => {
+      const confirmed =
+        window.confirm(
+          'Are you sure you want to reject this booking?'
+        )
+
+      if (!confirmed) {
+        return
+      }
+
+      const { error } =
+        await sb
+          .from('bookings')
+          .update({
+            status:
+              'cancelled',
+          })
+          .eq(
+            'id',
+            bookingId
+          )
+
+      if (error) {
+        alert(
+          error.message
+        )
+        return
+      }
+
+      await load()
+    }
 
   if (loading) {
     return (
@@ -268,7 +353,9 @@ export default function Dashboard() {
 
   return (
     <main className="dashboard">
+
       <aside className="side">
+
         <div className="brand">
           Sport<span>Slot</span>
         </div>
@@ -279,11 +366,24 @@ export default function Dashboard() {
         </div>
 
         <nav className="dashnav">
+
           {[
-            ['overview', 'Overview'],
-            ['bookings', 'Bookings'],
-            ['services', 'Services'],
-            ['settings', 'Settings'],
+            [
+              'overview',
+              'Overview',
+            ],
+            [
+              'bookings',
+              'Bookings',
+            ],
+            [
+              'services',
+              'Services',
+            ],
+            [
+              'settings',
+              'Settings',
+            ],
           ].map((x) => (
             <button
               key={x[0]}
@@ -299,9 +399,11 @@ export default function Dashboard() {
               {x[1]}
             </button>
           ))}
+
         </nav>
 
         <div className="sidebottom">
+
           <Link
             className="btn"
             href={
@@ -319,16 +421,21 @@ export default function Dashboard() {
           >
             Sign out
           </button>
+
         </div>
+
       </aside>
 
       <section className="main">
 
-        {tab !== 'overview' && (
+        {tab !==
+          'overview' && (
           <button
             className="btn"
             onClick={() =>
-              setTab('overview')
+              setTab(
+                'overview'
+              )
             }
             style={{
               marginBottom: 16,
@@ -339,17 +446,23 @@ export default function Dashboard() {
         )}
 
         <div className="topline">
+
           <div>
+
             <div className="muted">
               {email}
             </div>
 
             <h1>
-              {tab === 'overview'
+              {tab ===
+              'overview'
                 ? 'Overview'
-                : tab[0].toUpperCase() +
+                : tab
+                    .charAt(0)
+                    .toUpperCase() +
                   tab.slice(1)}
             </h1>
+
           </div>
 
           <Link
@@ -362,12 +475,16 @@ export default function Dashboard() {
           >
             View booking page
           </Link>
+
         </div>
 
-        {tab === 'overview' && (
+        {tab ===
+          'overview' && (
           <>
             <div className="statgrid">
+
               <div className="stat">
+
                 <span className="muted">
                   Upcoming bookings
                 </span>
@@ -378,25 +495,32 @@ export default function Dashboard() {
                       (b) =>
                         new Date(
                           b.starts_at
-                        ) > new Date() &&
+                        ) >
+                          new Date() &&
                         b.status !==
                           'cancelled'
                     ).length
                   }
                 </strong>
+
               </div>
 
               <div className="stat">
+
                 <span className="muted">
                   Services
                 </span>
 
                 <strong>
-                  {services.length}
+                  {
+                    services.length
+                  }
                 </strong>
+
               </div>
 
               <div className="stat">
+
                 <span className="muted">
                   Booking revenue
                 </span>
@@ -409,8 +533,11 @@ export default function Dashboard() {
                         'cancelled'
                     )
                     .reduce(
-                      (a, b) =>
-                        a +
+                      (
+                        total,
+                        b
+                      ) =>
+                        total +
                         (Number(
                           b.price
                         ) || 0),
@@ -419,10 +546,13 @@ export default function Dashboard() {
                     .toLocaleString()}{' '}
                   GEL
                 </strong>
+
               </div>
+
             </div>
 
             <div className="card section">
+
               <h2>
                 Upcoming bookings
               </h2>
@@ -439,18 +569,23 @@ export default function Dashboard() {
                   rejectBooking
                 }
               />
+
             </div>
           </>
         )}
 
-        {tab === 'bookings' && (
+        {tab ===
+          'bookings' && (
           <div className="card section">
+
             <h2>
               All bookings
             </h2>
 
             <BookingTable
-              bookings={bookings}
+              bookings={
+                bookings
+              }
               onConfirm={
                 confirmBooking
               }
@@ -458,23 +593,28 @@ export default function Dashboard() {
                 rejectBooking
               }
             />
+
           </div>
         )}
 
-        {tab === 'services' && (
+        {tab ===
+          'services' && (
           <div className="card section">
+
             <h2>
               Services & pricing
             </h2>
 
             <div className="addrow">
+
               <input
                 className="input"
                 placeholder="Service name"
                 value={newName}
                 onChange={(e) =>
                   setNewName(
-                    e.target.value
+                    e.target
+                      .value
                   )
                 }
               />
@@ -487,11 +627,14 @@ export default function Dashboard() {
               >
                 Add service
               </button>
+
             </div>
 
             <div className="service-list">
+
               {services.map(
                 (service) => {
+
                   const serviceOptions =
                     options.filter(
                       (o) =>
@@ -510,6 +653,7 @@ export default function Dashboard() {
                         padding: 20,
                       }}
                     >
+
                       <div
                         style={{
                           display:
@@ -521,7 +665,9 @@ export default function Dashboard() {
                           gap: 16,
                         }}
                       >
+
                         <div>
+
                           <strong>
                             {
                               service.name
@@ -533,6 +679,7 @@ export default function Dashboard() {
                               ? 'Active'
                               : 'Inactive'}
                           </div>
+
                         </div>
 
                         <div
@@ -542,6 +689,7 @@ export default function Dashboard() {
                             gap: 8,
                           }}
                         >
+
                           <button
                             className="btn"
                             onClick={() =>
@@ -571,7 +719,9 @@ export default function Dashboard() {
                               ? 'Disable'
                               : 'Enable'}
                           </button>
+
                         </div>
+
                       </div>
 
                       {editingService ===
@@ -584,13 +734,14 @@ export default function Dashboard() {
                             gap: 10,
                           }}
                         >
+
                           <strong>
-                            Duration &
-                            price
+                            Duration & price
                           </strong>
 
                           {durations.map(
                             (d) => {
+
                               const current =
                                 serviceOptions.find(
                                   (o) =>
@@ -611,6 +762,7 @@ export default function Dashboard() {
                                     gap: 12,
                                   }}
                                 >
+
                                   <div
                                     style={{
                                       flex: 1,
@@ -632,44 +784,55 @@ export default function Dashboard() {
                                     onChange={(
                                       e
                                     ) => {
+
                                       if (
                                         current
                                       ) {
                                         updateOption(
                                           current.id,
-                                          e
-                                            .target
-                                            .value
+                                          e.target.value
                                         )
                                       }
+
                                     }}
                                   />
 
                                   <span className="muted">
                                     GEL
                                   </span>
+
                                 </div>
                               )
                             }
                           )}
+
                         </div>
                       )}
+
                     </div>
                   )
                 }
               )}
+
             </div>
+
           </div>
         )}
 
-        {tab === 'settings' && club && (
-          <SettingsPanel
-            club={club}
-            onClubUpdated={(updatedClub) => {
-              setClub(updatedClub)
-            }}
-          />
-        )}
+        {tab ===
+          'settings' &&
+          club && (
+            <ClubSettings
+              club={club}
+              onClubUpdated={(
+                updatedClub
+              ) => {
+                setClub(
+                  updatedClub
+                )
+              }}
+            />
+          )}
 
       </section>
     </main>
@@ -691,127 +854,147 @@ function BookingTable({
 }) {
   return (
     <div className="table">
-      {bookings.length === 0 ? (
+
+      {bookings.length ===
+      0 ? (
         <p className="muted">
           No bookings yet.
         </p>
       ) : (
-        bookings.map((b) => (
-          <div
-            className="table-row"
-            key={b.id}
-          >
-            <div>
-              <strong>
-                {b.customer_name}
-              </strong>
-
-              <div className="muted">
-                {b.services?.name ||
-                  'Service'}{' '}
-                ·{' '}
-                {new Date(
-                  b.starts_at
-                ).toLocaleString()}
-              </div>
-            </div>
-
+        bookings.map(
+          (b) => (
             <div
-              style={{
-                display: 'flex',
-                flexDirection:
-                  'column',
-                alignItems:
-                  'flex-end',
-                gap: 8,
-              }}
+              className="table-row"
+              key={b.id}
             >
-              <strong>
-                {b.price} GEL
-              </strong>
+
+              <div>
+
+                <strong>
+                  {
+                    b.customer_name
+                  }
+                </strong>
+
+                <div className="muted">
+                  {b.services
+                    ?.name ||
+                    'Service'}{' '}
+                  ·{' '}
+                  {new Date(
+                    b.starts_at
+                  ).toLocaleString()}
+                </div>
+
+              </div>
 
               <div
-                className="pill"
                 style={{
-                  background:
-                    b.status ===
-                    'confirmed'
-                      ? '#991b1b'
-                      : b.status ===
-                        'pending'
-                      ? '#eab308'
-                      : b.status ===
-                        'cancelled'
-                      ? '#6b7280'
-                      : undefined,
-                  color:
-                    b.status ===
-                    'pending'
-                      ? '#111'
-                      : '#fff',
+                  display:
+                    'flex',
+                  flexDirection:
+                    'column',
+                  alignItems:
+                    'flex-end',
+                  gap: 8,
                 }}
               >
-                {b.status ===
-                'pending'
-                  ? 'TO BE CONFIRMED'
-                  : b.status ===
-                    'confirmed'
-                  ? 'RESERVED'
-                  : b.status ===
-                    'cancelled'
-                  ? 'REJECTED'
-                  : b.status}
-              </div>
 
-              {b.status ===
-                'pending' && (
+                <strong>
+                  {b.price} GEL
+                </strong>
+
                 <div
+                  className="pill"
                   style={{
-                    display: 'flex',
-                    gap: 8,
+                    background:
+                      b.status ===
+                      'confirmed'
+                        ? '#991b1b'
+                        : b.status ===
+                          'pending'
+                        ? '#eab308'
+                        : b.status ===
+                          'cancelled'
+                        ? '#6b7280'
+                        : undefined,
+                    color:
+                      b.status ===
+                      'pending'
+                        ? '#111'
+                        : '#fff',
                   }}
                 >
-                  <button
-                    className="btn"
-                    onClick={() =>
-                      onConfirm(
-                        b.id
-                      )
-                    }
-                    style={{
-                      background:
-                        '#16a34a',
-                      borderColor:
-                        '#16a34a',
-                      color: '#fff',
-                    }}
-                  >
-                    Confirm
-                  </button>
-
-                  <button
-                    className="btn"
-                    onClick={() =>
-                      onReject(
-                        b.id
-                      )
-                    }
-                    style={{
-                      background:
-                        '#991b1b',
-                      borderColor:
-                        '#991b1b',
-                      color: '#fff',
-                    }}
-                  >
-                    Reject
-                  </button>
+                  {b.status ===
+                  'pending'
+                    ? 'TO BE CONFIRMED'
+                    : b.status ===
+                      'confirmed'
+                    ? 'RESERVED'
+                    : b.status ===
+                      'cancelled'
+                    ? 'REJECTED'
+                    : b.status}
                 </div>
-              )}
+
+                {b.status ===
+                  'pending' && (
+                  <div
+                    style={{
+                      display:
+                        'flex',
+                      gap: 8,
+                    }}
+                  >
+
+                    <button
+                      className="btn"
+                      onClick={() =>
+                        onConfirm(
+                          b.id
+                        )
+                      }
+                      style={{
+                        background:
+                          '#16a34a',
+                        borderColor:
+                          '#16a34a',
+                        color:
+                          '#fff',
+                      }}
+                    >
+                      Confirm
+                    </button>
+
+                    <button
+                      className="btn"
+                      onClick={() =>
+                        onReject(
+                          b.id
+                        )
+                      }
+                      style={{
+                        background:
+                          '#991b1b',
+                        borderColor:
+                          '#991b1b',
+                        color:
+                          '#fff',
+                      }}
+                    >
+                      Reject
+                    </button>
+
+                  </div>
+                )}
+
+              </div>
+
             </div>
-          </div>
-        ))
+          )
+        )
       )}
+
     </div>
   )
 }
